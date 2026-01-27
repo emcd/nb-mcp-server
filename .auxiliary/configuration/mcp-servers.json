@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "rust-analyzer": {
+      "command": "mcp-language-server",
+      "args": [ "--lsp", "rust-analyzer", "--workspace", "." ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [ "-y", "@upstash/context7-mcp" ]
+    },
+    "librovore": {
+      "command": "uvx",
+      "args": [ "librovore", "serve" ]
+    }
+  }
+}

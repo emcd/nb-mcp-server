@@ -1,0 +1,88 @@
+{
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": 1800000,
+    "BASH_MAX_TIMEOUT_MS": 1800000,
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": 1,
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": 1,
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": 1,
+    "DISABLE_NON_ESSENTIAL_MODEL_CALLS": 1
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "auto_allow": [
+      "mcp__context7__get-library-docs",
+      "mcp__context7__resolve-library-id",
+      "mcp__librovore__query_content",
+      "mcp__librovore__query_inventory",
+      "mcp__rust-analyzer__definition",
+      "mcp__rust-analyzer__diagnostics",
+      "mcp__rust-analyzer__edit_file",
+      "mcp__rust-analyzer__hover",
+      "mcp__rust-analyzer__references",
+      "mcp__rust-analyzer__rename_symbol",
+      "Bash(cargo build *)",
+      "Bash(cargo check *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo test *)",
+      "Bash(awk *)",
+      "Bash(cat *)",
+      "Bash(cut *)",
+      "Bash(df *)",
+      "Bash(du *)",
+      "Bash(echo *)",
+      "Bash(file *)",
+      "Bash(find *)",
+      "Bash(gh browse *)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr view *)",
+      "Bash(gh release list *)",
+      "Bash(gh release view *)",
+      "Bash(gh repo list *)",
+      "Bash(gh repo view *)",
+      "Bash(gh run list *)",
+      "Bash(gh run view *)",
+      "Bash(gh run watch *)",
+      "Bash(gh status *)",
+      "Bash(git add *)",
+      "Bash(git branch *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git status)",
+      "Bash(grep *)",
+      "Bash(head *)",
+      "Bash(ls *)",
+      "Bash(ps *)",
+      "Bash(pwd *)",
+      "Bash(rg *)",
+      "Bash(sed *)",
+      "Bash(sort *)",
+      "Bash(tail *)",
+      "Bash(uniq *)",
+      "Bash(wc *)",
+      "Bash(which *)"
+    ]
+  },
+  "sandbox": {
+    "enabled": false,
+    "autoAllowBashIfSandboxed": true
+  }
+}
