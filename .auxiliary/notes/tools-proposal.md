@@ -314,6 +314,36 @@ For MVP, defer image support. When added later:
 - Encryption support
 - Template support
 
+## Tagging Convention for Multi-LLM Collaboration
+
+Based on Deepseek's proposal (from rust-litrpg experience), use these tag categories:
+
+| Category | Pattern | Examples |
+|----------|---------|----------|
+| **Collaborator** | `#llm-<name>` | `#llm-claude`, `#llm-gpt`, `#llm-deepseek` |
+| **Component** | `#component-<name>` | `#component-mcp`, `#component-nb-client` |
+| **Domain** | `#domain-<name>` | `#domain-notes`, `#domain-todos` |
+| **Task Type** | `#task-<type>` | `#task-design`, `#task-bug`, `#task-feature` |
+| **Status** | `#status-<state>` | `#status-in-progress`, `#status-review`, `#status-blocked` |
+| **Priority** | `#priority-<level>` | `#priority-critical`, `#priority-high` |
+| **Coordination** | (standalone) | `#handoff`, `#coordination`, `#merge-ready` |
+
+### Why This Matters
+
+In multi-LLM projects, different models work on different parts:
+- Claude might do architecture, GPT might do data modeling, Deepseek might do implementation
+- Handoffs between sessions need clear signals
+- Search by collaborator helps trace decisions
+
+### MCP Server Support
+
+The server should:
+1. Accept tags as bare strings: `["llm-claude", "handoff"]`
+2. Prefix with `#` when invoking nb: `--tags "#llm-claude" "#handoff"`
+3. Strip `#` prefix if user includes it (be forgiving)
+
+This keeps the API clean while maintaining nb compatibility.
+
 ## LLM Usage Patterns — What I'd Actually Use
 
 Speaking as Claude, here's my honest assessment of frequency:
