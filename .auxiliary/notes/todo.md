@@ -34,6 +34,11 @@ Drafted initial tools proposal. See `tools-proposal.md` for full design.
 - What's the best way to handle `nb`'s interactive prompts (e.g., delete confirmation)?
   Probably: use `--force` flags where available, require `confirm: true` in MCP params
 
+### Design Decisions Made
+
+- **Auto-install nb**: No. Detect missing `nb` and return helpful install instructions.
+  Could add `auto_install` config option later if needed, but low priority.
+
 ### Reference
 
 - `nb` docs: https://github.com/xwmx/nb
