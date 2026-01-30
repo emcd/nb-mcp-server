@@ -44,8 +44,10 @@ impl NbClient {
 
     /// Executes an nb command and returns stdout.
     async fn exec(&self, args: &[&str]) -> Result<String, NbError> {
+        tracing::debug!(?args, "executing nb command");
         let output = Command::new("nb")
             .args(args)
+            .stdin(Stdio::null()) // Prevent TTY hangs
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
