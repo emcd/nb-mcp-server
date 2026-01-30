@@ -28,8 +28,12 @@ pub struct NbClient {
 
 impl NbClient {
     /// Creates a new nb client.
-    pub fn new() -> anyhow::Result<Self> {
-        let default_notebook = std::env::var("NB_MCP_NOTEBOOK").ok();
+    ///
+    /// CLI notebook argument takes precedence over NB_MCP_NOTEBOOK env var.
+    pub fn new(cli_notebook: Option<&str>) -> anyhow::Result<Self> {
+        let default_notebook = cli_notebook
+            .map(String::from)
+            .or_else(|| std::env::var("NB_MCP_NOTEBOOK").ok());
         Ok(Self { default_notebook })
     }
 

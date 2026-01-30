@@ -11,6 +11,18 @@
     "librovore": {
       "command": "uvx",
       "args": [ "librovore", "serve" ]
+    },
+    "nb": {
+      "command": "reloaderoo",
+      "args": [
+        "--",
+        "cargo",
+        "run",
+        "--release",
+        "--",
+        "--notebook",
+        "nb-mcp-test"
+      ]
     }
   }
 }

@@ -12,6 +12,7 @@ use serde::Deserialize;
 use tracing::info;
 
 use crate::nb::NbClient;
+use crate::Config;
 
 #[derive(Clone)]
 struct McpServer {
@@ -170,8 +171,8 @@ struct MkdirArgs {
 
 #[tool_router]
 impl McpServer {
-    fn new() -> Result<Self> {
-        let nb = NbClient::new()?;
+    fn new(config: &Config) -> Result<Self> {
+        let nb = NbClient::new(config.notebook.as_deref())?;
         Ok(Self {
             nb,
             tool_router: Self::tool_router(),
@@ -214,9 +215,12 @@ impl rmcp::ServerHandler for McpServer {
     }
 }
 
-pub async fn run() -> Result<()> {
-    let server = McpServer::new()?;
+pub async fn run(config: Config) -> Result<()> {
+    let server = McpServer::new(&config)?;
     info!("starting nb-mcp server");
+    if let Some(ref nb) = config.notebook {
+        info!(notebook = %nb, "using configured notebook");
+    }
     let service = server.serve(stdio()).await?;
     info!("nb-mcp server ready");
     service.waiting().await?;
