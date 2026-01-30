@@ -36,6 +36,138 @@ struct HelpParams {
     query: String,
 }
 
+// Command-specific argument structs
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct StatusArgs {
+    /// Notebook to check status for (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct AddArgs {
+    /// Title for the note.
+    title: Option<String>,
+    /// Content of the note. Markdown is supported.
+    content: String,
+    /// Tags to apply (without # prefix).
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Folder to create the note in.
+    folder: Option<String>,
+    /// Notebook to add to (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct ShowArgs {
+    /// Note ID, filename, or title to show.
+    id: String,
+    /// Notebook to read from (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct EditArgs {
+    /// Note ID, filename, or title to edit.
+    id: String,
+    /// New content for the note (replaces existing content).
+    content: String,
+    /// Notebook containing the note (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct DeleteArgs {
+    /// Note ID, filename, or title to delete.
+    id: String,
+    /// Must be true to confirm deletion.
+    #[serde(default)]
+    confirm: bool,
+    /// Notebook containing the note (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct ListArgs {
+    /// Folder to list (lists root if not specified).
+    folder: Option<String>,
+    /// Filter by tags (without # prefix).
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Maximum number of items to return.
+    limit: Option<u32>,
+    /// Notebook to list from (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct SearchArgs {
+    /// Search query (supports regex).
+    query: String,
+    /// Filter by tags (without # prefix).
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Notebook to search in (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct TodoArgs {
+    /// Description of the todo item.
+    description: String,
+    /// Tags to apply (without # prefix).
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Notebook to add todo to (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct TaskIdArgs {
+    /// Todo ID to mark as done/undone.
+    id: String,
+    /// Notebook containing the todo (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct TasksArgs {
+    /// Notebook to list todos from (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct BookmarkArgs {
+    /// URL to bookmark.
+    url: String,
+    /// Title for the bookmark.
+    title: Option<String>,
+    /// Tags to apply (without # prefix).
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Comment or description.
+    comment: Option<String>,
+    /// Notebook to add bookmark to (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct FoldersArgs {
+    /// Parent folder to list (lists root if not specified).
+    parent: Option<String>,
+    /// Notebook to list folders from (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct MkdirArgs {
+    /// Path of folder to create.
+    path: String,
+    /// Notebook to create folder in (uses default if not specified).
+    notebook: Option<String>,
+}
+
 #[tool_router]
 impl McpServer {
     fn new() -> Result<Self> {
@@ -102,14 +234,108 @@ impl McpServer {
         }
 
         // Strip "nb." prefix if present.
-        let subcommand = command
-            .strip_prefix("nb.")
-            .unwrap_or(command);
+        let subcommand = command.strip_prefix("nb.").unwrap_or(command);
 
         let result = match subcommand {
-            "status" => self.nb.status().await,
+            "status" => {
+                let args: StatusArgs = parse_args(call.args)?;
+                self.nb.status(args.notebook.as_deref()).await
+            }
             "notebooks" => self.nb.notebooks().await,
-            // TODO: Implement remaining commands.
+            "add" => {
+                let args: AddArgs = parse_args(call.args)?;
+                self.nb
+                    .add(
+                        args.title.as_deref(),
+                        &args.content,
+                        &args.tags,
+                        args.folder.as_deref(),
+                        args.notebook.as_deref(),
+                    )
+                    .await
+            }
+            "show" => {
+                let args: ShowArgs = parse_args(call.args)?;
+                self.nb.show(&args.id, args.notebook.as_deref()).await
+            }
+            "edit" => {
+                let args: EditArgs = parse_args(call.args)?;
+                self.nb
+                    .edit(&args.id, &args.content, args.notebook.as_deref())
+                    .await
+            }
+            "delete" => {
+                let args: DeleteArgs = parse_args(call.args)?;
+                if !args.confirm {
+                    return Err(McpError::invalid_params(
+                        "delete requires confirm: true",
+                        Some(serde_json::json!({
+                            "hint": "Set confirm: true to delete the note.",
+                            "id": args.id,
+                        })),
+                    ));
+                }
+                self.nb.delete(&args.id, args.notebook.as_deref()).await
+            }
+            "list" => {
+                let args: ListArgs = parse_args(call.args)?;
+                self.nb
+                    .list(
+                        args.folder.as_deref(),
+                        &args.tags,
+                        args.limit,
+                        args.notebook.as_deref(),
+                    )
+                    .await
+            }
+            "search" => {
+                let args: SearchArgs = parse_args(call.args)?;
+                self.nb
+                    .search(&args.query, &args.tags, args.notebook.as_deref())
+                    .await
+            }
+            "todo" => {
+                let args: TodoArgs = parse_args(call.args)?;
+                self.nb
+                    .todo(&args.description, &args.tags, args.notebook.as_deref())
+                    .await
+            }
+            "do" => {
+                let args: TaskIdArgs = parse_args(call.args)?;
+                self.nb.do_task(&args.id, args.notebook.as_deref()).await
+            }
+            "undo" => {
+                let args: TaskIdArgs = parse_args(call.args)?;
+                self.nb.undo_task(&args.id, args.notebook.as_deref()).await
+            }
+            "tasks" => {
+                let args: TasksArgs = parse_args(call.args)?;
+                self.nb.tasks(args.notebook.as_deref()).await
+            }
+            "bookmark" => {
+                let args: BookmarkArgs = parse_args(call.args)?;
+                self.nb
+                    .bookmark(
+                        &args.url,
+                        args.title.as_deref(),
+                        &args.tags,
+                        args.comment.as_deref(),
+                        args.notebook.as_deref(),
+                    )
+                    .await
+            }
+            "folders" => {
+                let args: FoldersArgs = parse_args(call.args)?;
+                self.nb
+                    .folders(args.parent.as_deref(), args.notebook.as_deref())
+                    .await
+            }
+            "mkdir" => {
+                let args: MkdirArgs = parse_args(call.args)?;
+                self.nb
+                    .mkdir(&args.path, args.notebook.as_deref())
+                    .await
+            }
             _ => {
                 return Err(McpError::invalid_params(
                     "unknown subcommand",
@@ -126,6 +352,39 @@ impl McpServer {
             Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
         }
     }
+}
+
+fn parse_args<T: serde::de::DeserializeOwned + Default>(
+    value: serde_json::Value,
+) -> Result<T, McpError> {
+    // Handle empty/null args by using defaults
+    if value.is_null() || (value.is_object() && value.as_object().unwrap().is_empty()) {
+        return Ok(T::default());
+    }
+
+    // Handle string-encoded JSON (some clients send args as string)
+    let value = match value {
+        serde_json::Value::String(raw) => serde_json::from_str(&raw).map_err(|err| {
+            McpError::invalid_params(
+                "invalid args for command",
+                Some(serde_json::json!({
+                    "error": format!("args was a string but did not parse as JSON: {}", err),
+                    "hint": "Pass args as a JSON object.",
+                })),
+            )
+        })?,
+        other => other,
+    };
+
+    serde_json::from_value::<T>(value).map_err(|err| {
+        McpError::invalid_params(
+            "invalid args for command",
+            Some(serde_json::json!({
+                "error": err.to_string(),
+                "hint": "Check the required fields using the help tool.",
+            })),
+        )
+    })
 }
 
 fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
@@ -156,6 +415,21 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "params": {"command": "nb.<subcommand>", "args": {}},
             },
         }),
+        "nb.status" => command_help("nb.status", "Show notebook status", json_schema_for::<StatusArgs>()),
+        "nb.add" => command_help("nb.add", "Create a new note", json_schema_for::<AddArgs>()),
+        "nb.show" => command_help("nb.show", "Read a note's content", json_schema_for::<ShowArgs>()),
+        "nb.edit" => command_help("nb.edit", "Update a note's content", json_schema_for::<EditArgs>()),
+        "nb.delete" => command_help("nb.delete", "Delete a note (requires confirm: true)", json_schema_for::<DeleteArgs>()),
+        "nb.list" => command_help("nb.list", "List notes with optional filtering", json_schema_for::<ListArgs>()),
+        "nb.search" => command_help("nb.search", "Full-text search notes", json_schema_for::<SearchArgs>()),
+        "nb.todo" => command_help("nb.todo", "Create a todo item", json_schema_for::<TodoArgs>()),
+        "nb.do" => command_help("nb.do", "Mark a todo as complete", json_schema_for::<TaskIdArgs>()),
+        "nb.undo" => command_help("nb.undo", "Reopen a completed todo", json_schema_for::<TaskIdArgs>()),
+        "nb.tasks" => command_help("nb.tasks", "List todo items", json_schema_for::<TasksArgs>()),
+        "nb.bookmark" => command_help("nb.bookmark", "Save a URL as a bookmark", json_schema_for::<BookmarkArgs>()),
+        "nb.folders" => command_help("nb.folders", "List folders in notebook", json_schema_for::<FoldersArgs>()),
+        "nb.mkdir" => command_help("nb.mkdir", "Create a folder", json_schema_for::<MkdirArgs>()),
+        "nb.notebooks" => command_help("nb.notebooks", "List available notebooks", serde_json::json!({"type": "object", "properties": {}})),
         _ => {
             return Err(McpError::invalid_params(
                 "unknown query; try 'nb' for command list",
@@ -165,4 +439,20 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
     };
 
     Ok(CallToolResult::success(vec![Content::json(response)?]))
+}
+
+fn command_help(command: &str, description: &str, schema: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "command": command,
+        "description": description,
+        "args_schema": schema,
+        "invoke": {
+            "tool": "nb",
+            "params": {"command": command, "args": {}},
+        },
+    })
+}
+
+fn json_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
+    serde_json::to_value(schemars::schema_for!(T)).unwrap_or(serde_json::Value::Null)
 }

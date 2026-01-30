@@ -1,43 +1,53 @@
 # nb-mcp-server TODO
 
-## Session 2025-01-26 (Claude Opus 4.5)
+## Session 2025-01-30 (Claude Opus 4.5)
 
-Drafted initial tools proposal. See `tools-proposal.md` for full design.
+Implemented MVP functionality. All core commands working.
+
+### Completed
+
+- [x] **Project setup** — Cargo.toml, module structure
+- [x] **Core infrastructure** — NbClient with notebook qualification
+- [x] **MVP tools**:
+  - [x] `nb.status` — notebook status
+  - [x] `nb.notebooks` — list notebooks
+  - [x] `nb.add` — create notes (with backtick support!)
+  - [x] `nb.show` — read notes
+  - [x] `nb.edit` — update notes
+  - [x] `nb.delete` — delete notes (with confirm requirement)
+  - [x] `nb.list` — list notes/folders
+  - [x] `nb.search` — full-text search
+  - [x] `nb.todo` — create todos
+  - [x] `nb.do` / `nb.undo` — toggle todo status
+  - [x] `nb.tasks` — list todos
+  - [x] `nb.bookmark` — save URLs
+  - [x] `nb.folders` — list folders
+  - [x] `nb.mkdir` — create folders
+- [x] **Configuration** — NB_MCP_NOTEBOOK environment variable
 
 ### Next Steps
 
-1. [ ] **Project setup**
-   - Create `Cargo.toml` with `rmcp`, `tokio`, `serde`, `schemars` deps
-   - Create `src/main.rs` entry point
-   - Create `src/mcp/` module structure (mirror litrpg pattern)
+1. [ ] **Integration testing** — Test via actual MCP client
+2. [ ] **Documentation** — README with setup instructions
+3. [ ] **Error handling improvements** — Better messages for common failures
+4. [ ] **Output parsing** — Structured JSON responses instead of raw text
 
-2. [ ] **Core infrastructure**
-   - Implement `NbClient` to shell out to `nb` command
-   - Handle notebook qualification (prefix all commands with `notebook:`)
-   - Parse `nb` output into structured responses
+### Test Notebook
 
-3. [ ] **MVP tools** (in priority order)
-   - `nb.status` — test the infrastructure
-   - `nb.add` — note creation (the killer feature)
-   - `nb.show` — note reading
-   - `nb.list` — browsing
-   - `nb.search` — finding notes
-   - `nb.edit` — updating notes
+Created `nb-mcp-test` notebook for development testing.
 
-4. [ ] **Configuration**
-   - Environment variable for default notebook
-   - Optional CWD-to-notebook mapping
-
-### Open Questions
-
-- Should we create a test notebook for development?
-- What's the best way to handle `nb`'s interactive prompts (e.g., delete confirmation)?
-  Probably: use `--force` flags where available, require `confirm: true` in MCP params
+```bash
+# Quick test commands
+nb nb-mcp-test:list --no-color
+nb nb-mcp-test:tasks --no-color
+```
 
 ### Design Decisions Made
 
 - **Auto-install nb**: No. Detect missing `nb` and return helpful install instructions.
-  Could add `auto_install` config option later if needed, but low priority.
+- **Confirmation for delete**: Required via `confirm: true` parameter.
+- **Tag format**: Accept bare strings, prefix with `#` when invoking nb.
+- **ANSI codes**: Use `--no-color` flag to avoid escape sequences in output.
 
 ### Reference
 
