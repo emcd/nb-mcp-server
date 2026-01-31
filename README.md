@@ -159,6 +159,18 @@ Priority order:
 3. `NB_MCP_NOTEBOOK` environment variable
 4. `nb`'s default notebook (lowest)
 
+### Logging
+
+Logs are written to `~/.local/state/nb-mcp/{project}--{worktree}.log` (XDG-compliant).
+
+For Git worktrees, logs are named after both the master project and the worktree basename to avoid collisions between multiple MCP server instances.
+
+Control log level with `RUST_LOG`:
+
+```bash
+RUST_LOG=debug nb-mcp --notebook myproject
+```
+
 ## License
 
 MIT
