@@ -13,9 +13,8 @@ use tokio::process::Command;
 /// - Fe sequences: `ESC [@-Z\-_]` (single byte after ESC)
 /// - CSI sequences: `ESC [ ... m` (SGR colors, cursor control, etc.)
 /// - nF sequences: `ESC [ -/]* [0-~]` (character set designation like `ESC ( B`)
-static ANSI_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|[ -/]*[0-~])").unwrap()
-});
+static ANSI_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|[ -/]*[0-~])").unwrap());
 
 /// Strip ANSI escape sequences from text.
 fn strip_ansi(text: &str) -> String {
@@ -28,7 +27,9 @@ pub enum NbError {
     #[error("nb command failed: {0}")]
     CommandFailed(String),
 
-    #[error("nb not found in PATH; install via: brew install xwmx/taps/nb (macOS) or see https://github.com/xwmx/nb#installation")]
+    #[error(
+        "nb not found in PATH; install via: brew install xwmx/taps/nb (macOS) or see https://github.com/xwmx/nb#installation"
+    )]
     NotFound,
 
     #[error("IO error: {0}")]
@@ -162,11 +163,7 @@ impl NbClient {
     }
 
     /// Shows a note's content.
-    pub async fn show(
-        &self,
-        id: &str,
-        notebook: Option<&str>,
-    ) -> Result<String, NbError> {
+    pub async fn show(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
         let selector = match self.resolve_notebook(notebook) {
             Some(nb) => format!("{}:{}", nb, id),
             None => id.to_string(),
@@ -275,11 +272,7 @@ impl NbClient {
     }
 
     /// Deletes a note.
-    pub async fn delete(
-        &self,
-        id: &str,
-        notebook: Option<&str>,
-    ) -> Result<String, NbError> {
+    pub async fn delete(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
         let selector = match self.resolve_notebook(notebook) {
             Some(nb) => format!("{}:{}", nb, id),
             None => id.to_string(),
@@ -319,11 +312,7 @@ impl NbClient {
     }
 
     /// Marks a todo as done.
-    pub async fn do_task(
-        &self,
-        id: &str,
-        notebook: Option<&str>,
-    ) -> Result<String, NbError> {
+    pub async fn do_task(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
         let selector = match self.resolve_notebook(notebook) {
             Some(nb) => format!("{}:{}", nb, id),
             None => id.to_string(),
@@ -332,11 +321,7 @@ impl NbClient {
     }
 
     /// Marks a todo as not done.
-    pub async fn undo_task(
-        &self,
-        id: &str,
-        notebook: Option<&str>,
-    ) -> Result<String, NbError> {
+    pub async fn undo_task(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
         let selector = match self.resolve_notebook(notebook) {
             Some(nb) => format!("{}:{}", nb, id),
             None => id.to_string(),
@@ -345,10 +330,7 @@ impl NbClient {
     }
 
     /// Lists todos.
-    pub async fn tasks(
-        &self,
-        notebook: Option<&str>,
-    ) -> Result<String, NbError> {
+    pub async fn tasks(&self, notebook: Option<&str>) -> Result<String, NbError> {
         let mut args = vec!["tasks".to_string()];
 
         if let Some(nb) = self.resolve_notebook(notebook) {
@@ -433,11 +415,7 @@ impl NbClient {
     }
 
     /// Creates a folder.
-    pub async fn mkdir(
-        &self,
-        path: &str,
-        notebook: Option<&str>,
-    ) -> Result<String, NbError> {
+    pub async fn mkdir(&self, path: &str, notebook: Option<&str>) -> Result<String, NbError> {
         let folder_path = match self.resolve_notebook(notebook) {
             Some(nb) => format!("{}:{}/", nb, path),
             None => format!("{}/", path),

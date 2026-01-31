@@ -4,11 +4,7 @@
 //! When running inside a Git repository, logs are named after the project and worktree
 //! to avoid collisions between multiple MCP server instances.
 
-use std::{
-    path::PathBuf,
-    process::Command,
-    sync::OnceLock,
-};
+use std::{path::PathBuf, process::Command, sync::OnceLock};
 
 /// Cached log path (computed once per process).
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -66,10 +62,7 @@ fn detect_git_info() -> Option<(String, String)> {
     let git_common_dir = git_common_dir.canonicalize().ok()?;
 
     // Master root is parent of git_common_dir when it ends with .git
-    let master_root = if git_common_dir
-        .file_name()
-        .is_some_and(|n| n == ".git")
-    {
+    let master_root = if git_common_dir.file_name().is_some_and(|n| n == ".git") {
         git_common_dir.parent()?.to_path_buf()
     } else {
         // Bare repo or unusual structure - fall back to current
@@ -117,7 +110,13 @@ fn git_rev_parse(args: &[&str]) -> Option<PathBuf> {
 /// Replaces problematic characters with dashes.
 fn sanitize_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 

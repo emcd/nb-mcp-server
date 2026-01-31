@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod mcp;
 mod nb;
@@ -45,22 +45,17 @@ fn parse_args() -> Config {
 /// - Stderr: For immediate feedback during development
 /// - File: For persistent logs in `~/.local/state/nb-mcp/{project}--{worktree}.log`
 fn setup_logging() {
-    let env_filter = EnvFilter::from_default_env()
-        .add_directive(tracing::Level::INFO.into());
+    let env_filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
 
     // Stderr layer (compact, for console)
-    let stderr_layer = fmt::layer()
-        .with_writer(std::io::stderr)
-        .compact();
+    let stderr_layer = fmt::layer().with_writer(std::io::stderr).compact();
 
     // File layer (with timestamps, for debugging)
     let file_layer = match setup_file_logging() {
         Some((writer, guard)) => {
             // Keep the guard alive by leaking it (file logger lives for process lifetime)
             std::mem::forget(guard);
-            Some(fmt::layer()
-                .with_writer(writer)
-                .with_ansi(false))
+            Some(fmt::layer().with_writer(writer).with_ansi(false))
         }
         None => None,
     };

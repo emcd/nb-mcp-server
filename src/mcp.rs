@@ -1,18 +1,18 @@
 use anyhow::Result;
 use rmcp::{
+    ErrorData as McpError, ServiceExt,
     handler::server::router::tool::ToolRouter,
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
     transport::stdio,
-    ErrorData as McpError, ServiceExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 use tracing::info;
 
-use crate::nb::NbClient;
 use crate::Config;
+use crate::nb::NbClient;
 
 #[derive(Clone)]
 struct McpServer {
@@ -197,10 +197,7 @@ impl McpServer {
     #[tool(
         description = "nb note-taking tool. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for schemas."
     )]
-    async fn nb(
-        &self,
-        Parameters(call): Parameters<NbCall>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
     }
 
@@ -246,10 +243,7 @@ impl McpServer {
     async fn dispatch_nb(&self, call: NbCall) -> Result<CallToolResult, McpError> {
         let command = call.command.trim();
         if command.is_empty() {
-            return Err(McpError::invalid_params(
-                "command must be non-empty",
-                None,
-            ));
+            return Err(McpError::invalid_params("command must be non-empty", None));
         }
 
         // Strip "nb." prefix if present.
@@ -351,9 +345,7 @@ impl McpServer {
             }
             "mkdir" => {
                 let args: MkdirArgs = parse_args(call.args)?;
-                self.nb
-                    .mkdir(&args.path, args.notebook.as_deref())
-                    .await
+                self.nb.mkdir(&args.path, args.notebook.as_deref()).await
             }
             "import" => {
                 let args: ImportArgs = parse_args(call.args)?;
@@ -447,22 +439,82 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "params": {"command": "nb.<subcommand>", "args": {}},
             },
         }),
-        "nb.status" => command_help("nb.status", "Show notebook status", json_schema_for::<StatusArgs>()),
+        "nb.status" => command_help(
+            "nb.status",
+            "Show notebook status",
+            json_schema_for::<StatusArgs>(),
+        ),
         "nb.add" => command_help("nb.add", "Create a new note", json_schema_for::<AddArgs>()),
-        "nb.show" => command_help("nb.show", "Read a note's content", json_schema_for::<ShowArgs>()),
-        "nb.edit" => command_help("nb.edit", "Update a note's content", json_schema_for::<EditArgs>()),
-        "nb.delete" => command_help("nb.delete", "Delete a note (requires confirm: true)", json_schema_for::<DeleteArgs>()),
-        "nb.list" => command_help("nb.list", "List notes with optional filtering", json_schema_for::<ListArgs>()),
-        "nb.search" => command_help("nb.search", "Full-text search notes", json_schema_for::<SearchArgs>()),
-        "nb.todo" => command_help("nb.todo", "Create a todo item", json_schema_for::<TodoArgs>()),
-        "nb.do" => command_help("nb.do", "Mark a todo as complete", json_schema_for::<TaskIdArgs>()),
-        "nb.undo" => command_help("nb.undo", "Reopen a completed todo", json_schema_for::<TaskIdArgs>()),
-        "nb.tasks" => command_help("nb.tasks", "List todo items", json_schema_for::<TasksArgs>()),
-        "nb.bookmark" => command_help("nb.bookmark", "Save a URL as a bookmark", json_schema_for::<BookmarkArgs>()),
-        "nb.folders" => command_help("nb.folders", "List folders in notebook", json_schema_for::<FoldersArgs>()),
-        "nb.mkdir" => command_help("nb.mkdir", "Create a folder", json_schema_for::<MkdirArgs>()),
-        "nb.import" => command_help("nb.import", "Import a file or URL into notebook", json_schema_for::<ImportArgs>()),
-        "nb.notebooks" => command_help("nb.notebooks", "List available notebooks", serde_json::json!({"type": "object", "properties": {}})),
+        "nb.show" => command_help(
+            "nb.show",
+            "Read a note's content",
+            json_schema_for::<ShowArgs>(),
+        ),
+        "nb.edit" => command_help(
+            "nb.edit",
+            "Update a note's content",
+            json_schema_for::<EditArgs>(),
+        ),
+        "nb.delete" => command_help(
+            "nb.delete",
+            "Delete a note (requires confirm: true)",
+            json_schema_for::<DeleteArgs>(),
+        ),
+        "nb.list" => command_help(
+            "nb.list",
+            "List notes with optional filtering",
+            json_schema_for::<ListArgs>(),
+        ),
+        "nb.search" => command_help(
+            "nb.search",
+            "Full-text search notes",
+            json_schema_for::<SearchArgs>(),
+        ),
+        "nb.todo" => command_help(
+            "nb.todo",
+            "Create a todo item",
+            json_schema_for::<TodoArgs>(),
+        ),
+        "nb.do" => command_help(
+            "nb.do",
+            "Mark a todo as complete",
+            json_schema_for::<TaskIdArgs>(),
+        ),
+        "nb.undo" => command_help(
+            "nb.undo",
+            "Reopen a completed todo",
+            json_schema_for::<TaskIdArgs>(),
+        ),
+        "nb.tasks" => command_help(
+            "nb.tasks",
+            "List todo items",
+            json_schema_for::<TasksArgs>(),
+        ),
+        "nb.bookmark" => command_help(
+            "nb.bookmark",
+            "Save a URL as a bookmark",
+            json_schema_for::<BookmarkArgs>(),
+        ),
+        "nb.folders" => command_help(
+            "nb.folders",
+            "List folders in notebook",
+            json_schema_for::<FoldersArgs>(),
+        ),
+        "nb.mkdir" => command_help(
+            "nb.mkdir",
+            "Create a folder",
+            json_schema_for::<MkdirArgs>(),
+        ),
+        "nb.import" => command_help(
+            "nb.import",
+            "Import a file or URL into notebook",
+            json_schema_for::<ImportArgs>(),
+        ),
+        "nb.notebooks" => command_help(
+            "nb.notebooks",
+            "List available notebooks",
+            serde_json::json!({"type": "object", "properties": {}}),
+        ),
         _ => {
             return Err(McpError::invalid_params(
                 "unknown query; try 'nb' for command list",
