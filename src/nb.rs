@@ -2,9 +2,25 @@
 //!
 //! Handles notebook qualification, escaping, and output parsing.
 
-use std::process::Stdio;
+use std::{process::Stdio, sync::LazyLock};
 
+use regex::Regex;
 use tokio::process::Command;
+
+/// Regex to match ANSI/ISO 2022 escape sequences.
+///
+/// Covers:
+/// - Fe sequences: `ESC [@-Z\-_]` (single byte after ESC)
+/// - CSI sequences: `ESC [ ... m` (SGR colors, cursor control, etc.)
+/// - nF sequences: `ESC [ -/]* [0-~]` (character set designation like `ESC ( B`)
+static ANSI_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|[ -/]*[0-~])").unwrap()
+});
+
+/// Strip ANSI escape sequences from text.
+fn strip_ansi(text: &str) -> String {
+    ANSI_REGEX.replace_all(text, "").into_owned()
+}
 
 /// Errors from nb CLI invocation.
 #[derive(Debug, thiserror::Error)]
@@ -62,15 +78,16 @@ impl NbClient {
             .await?;
 
         if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            Ok(strip_ansi(&stdout))
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
             // nb sometimes writes errors to stdout
             let msg = if stderr.is_empty() {
-                stdout.to_string()
+                strip_ansi(&stdout)
             } else {
-                stderr.to_string()
+                strip_ansi(&stderr)
             };
             Err(NbError::CommandFailed(msg))
         }
