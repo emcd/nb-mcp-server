@@ -1,9 +1,18 @@
 [package]
-name = "nb-mcp"
+name = "nb-mcp-server"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "MCP server wrapping the nb CLI for LLM-friendly note-taking"
-license = "MIT"
+license = "Apache-2.0"
+repository = "https://github.com/emcd/nb-mcp-server"
+readme = "README.md"
+keywords = ["mcp", "nb", "notes", "cli", "llm"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "nb-mcp"
+path = "src/main.rs"
 
 [dependencies]
 # MCP server framework

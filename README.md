@@ -31,7 +31,17 @@ sudo apt install nb
 # Or see https://github.com/xwmx/nb#installation
 ```
 
-### Build
+### Installation
+
+From [crates.io](https://crates.io/crates/nb-mcp-server):
+
+```bash
+cargo install nb-mcp-server
+```
+
+Or download a prebuilt binary from [GitHub Releases](https://github.com/emcd/nb-mcp-server/releases).
+
+### Build from Source
 
 ```bash
 cargo build --release
@@ -174,4 +184,4 @@ RUST_LOG=debug nb-mcp --notebook myproject
 
 ## License
 
-MIT
+[Apache 2.0](LICENSE)

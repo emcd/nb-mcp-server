@@ -1,0 +1,54 @@
+name: qa
+
+on:
+  pull_request:
+    branches: ['*']
+  push:
+    branches: ['master', 'release-*']
+  workflow_dispatch: {}
+
+jobs:
+
+  initialize:
+    uses: ./.github/workflows/core--initializer.yaml
+
+  lint:
+    needs: [initialize]
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    needs: [initialize, lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.initialize.outputs.platforms) }}
+        exclude: ${{ fromJSON(needs.initialize.outputs.matrix-exclusions) }}
+    runs-on: ${{ matrix.platform }}
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Test
+        run: cargo test --release

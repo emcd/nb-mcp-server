@@ -1,0 +1,77 @@
+name: init
+
+on:
+  workflow_call:
+    outputs:
+      matrix-exclusions:
+        description: 'Array of excluded platform-target pairs in JSON format.'
+        value: '${{ jobs.define-constants.outputs.matrix-exclusions }}'
+      platforms:
+        description: 'Array of platforms in JSON format.'
+        value: '${{ jobs.define-constants.outputs.platforms }}'
+      rust-targets:
+        description: 'Map of platforms to Rust targets in JSON format.'
+        value: '${{ jobs.define-constants.outputs.rust-targets }}'
+      rust-toolchain:
+        description: 'Rust toolchain version.'
+        value: '${{ jobs.define-constants.outputs.rust-toolchain }}'
+      crates-io-url:
+        description: 'Crates.io package URL base.'
+        value: '${{ jobs.define-constants.outputs.crates-io-url }}'
+
+jobs:
+
+  define-constants:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix-exclusions: '${{ steps.matrix-exclusions.outputs.items }}'
+      platforms: '${{ steps.platforms.outputs.platforms }}'
+      rust-targets: '${{ steps.rust-targets.outputs.targets }}'
+      rust-toolchain: '${{ steps.rust-toolchain.outputs.toolchain }}'
+      crates-io-url: '${{ steps.crates-io.outputs.url }}'
+    steps:
+
+      - name: Declare Platforms
+        id: platforms
+        run: |
+          set -eu
+          platforms="$(jq --compact-output <<EOF
+          ["ubuntu-latest", "ubuntu-24.04-arm", "macos-latest", "windows-latest"]
+          EOF
+          )"
+          echo "platforms=${platforms}" >>${GITHUB_OUTPUT}
+
+      - name: Declare Rust Targets
+        id: rust-targets
+        run: |
+          set -eu
+          targets="$(jq --compact-output <<EOF
+          {
+            "ubuntu-latest": "x86_64-unknown-linux-gnu",
+            "ubuntu-24.04-arm": "aarch64-unknown-linux-gnu",
+            "macos-latest": "aarch64-apple-darwin",
+            "windows-latest": "x86_64-pc-windows-msvc"
+          }
+          EOF
+          )"
+          echo "targets=${targets}" >>${GITHUB_OUTPUT}
+
+      - name: Declare Matrix Exclusions
+        id: matrix-exclusions
+        run: |
+          set -eu
+          items="$(jq --compact-output <<EOF
+          []
+          EOF
+          )"
+          echo "items=${items}" >>${GITHUB_OUTPUT}
+
+      - name: Declare Rust Toolchain
+        id: rust-toolchain
+        run: |
+          echo "toolchain=stable" >>${GITHUB_OUTPUT}
+
+      - name: Declare Crates.io URL
+        id: crates-io
+        run: |
+          echo "url=https://crates.io/crates/" >>${GITHUB_OUTPUT}
