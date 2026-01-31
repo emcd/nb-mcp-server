@@ -104,6 +104,7 @@ All commands are accessed via the `nb` tool with a `command` parameter.
 | Command | Description | Key Arguments |
 |---------|-------------|---------------|
 | `nb.bookmark` | Save a URL | `url`, `title`, `tags[]`, `comment` |
+| `nb.import` | Import file/URL | `source`, `folder`, `filename`, `convert` |
 | `nb.folders` | List folders | `parent` |
 | `nb.mkdir` | Create folder | `path` |
 | `nb.notebooks` | List notebooks | (none) |

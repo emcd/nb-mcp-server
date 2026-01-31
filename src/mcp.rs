@@ -169,6 +169,21 @@ struct MkdirArgs {
     notebook: Option<String>,
 }
 
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct ImportArgs {
+    /// File path or URL to import.
+    source: String,
+    /// Folder to import into (imports to root if not specified).
+    folder: Option<String>,
+    /// Filename to use in notebook (uses original name if not specified).
+    filename: Option<String>,
+    /// Convert HTML content to Markdown.
+    #[serde(default)]
+    convert: bool,
+    /// Notebook to import into (uses default if not specified).
+    notebook: Option<String>,
+}
+
 #[tool_router]
 impl McpServer {
     fn new(config: &Config) -> Result<Self> {
@@ -180,7 +195,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks. Use `help` for schemas."
+        description = "nb note-taking tool. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for schemas."
     )]
     async fn nb(
         &self,
@@ -340,6 +355,18 @@ impl McpServer {
                     .mkdir(&args.path, args.notebook.as_deref())
                     .await
             }
+            "import" => {
+                let args: ImportArgs = parse_args(call.args)?;
+                self.nb
+                    .import(
+                        &args.source,
+                        args.folder.as_deref(),
+                        args.filename.as_deref(),
+                        args.convert,
+                        args.notebook.as_deref(),
+                    )
+                    .await
+            }
             _ => {
                 return Err(McpError::invalid_params(
                     "unknown subcommand",
@@ -413,6 +440,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.bookmark", "description": "Save a URL as a bookmark"},
                 {"command": "nb.folders", "description": "List folders in notebook"},
                 {"command": "nb.mkdir", "description": "Create a folder"},
+                {"command": "nb.import", "description": "Import a file or URL into notebook"},
             ],
             "invoke": {
                 "tool": "nb",
@@ -433,6 +461,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         "nb.bookmark" => command_help("nb.bookmark", "Save a URL as a bookmark", json_schema_for::<BookmarkArgs>()),
         "nb.folders" => command_help("nb.folders", "List folders in notebook", json_schema_for::<FoldersArgs>()),
         "nb.mkdir" => command_help("nb.mkdir", "Create a folder", json_schema_for::<MkdirArgs>()),
+        "nb.import" => command_help("nb.import", "Import a file or URL into notebook", json_schema_for::<ImportArgs>()),
         "nb.notebooks" => command_help("nb.notebooks", "List available notebooks", serde_json::json!({"type": "object", "properties": {}})),
         _ => {
             return Err(McpError::invalid_params(

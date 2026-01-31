@@ -427,4 +427,45 @@ impl NbClient {
         };
         self.exec(&["add", "folder", &folder_path]).await
     }
+
+    /// Imports a file or URL into the notebook.
+    pub async fn import(
+        &self,
+        source: &str,
+        folder: Option<&str>,
+        filename: Option<&str>,
+        convert: bool,
+        notebook: Option<&str>,
+    ) -> Result<String, NbError> {
+        let mut args = Vec::new();
+
+        // Notebook-qualified command
+        let cmd = match self.resolve_notebook(notebook) {
+            Some(nb) => format!("{}:import", nb),
+            None => "import".to_string(),
+        };
+        args.push(cmd);
+
+        // Source path or URL
+        args.push(source.to_string());
+
+        // Convert HTML to Markdown
+        if convert {
+            args.push("--convert".to_string());
+        }
+
+        // Destination: notebook:folder/filename or just folder/filename
+        // nb import expects destination as a positional argument after source
+        if folder.is_some() || filename.is_some() {
+            let dest = match (folder, filename) {
+                (Some(f), Some(n)) => format!("{}/{}", f, n),
+                (Some(f), None) => format!("{}/", f),
+                (None, Some(n)) => n.to_string(),
+                (None, None) => unreachable!(),
+            };
+            args.push(dest);
+        }
+
+        self.exec_vec(args).await
+    }
 }
