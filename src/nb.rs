@@ -227,13 +227,21 @@ impl NbClient {
         &self,
         query: &str,
         tags: &[String],
+        folder: Option<&str>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let mut args = vec!["search".to_string()];
 
-        // Notebook scope
-        if let Some(nb) = self.resolve_notebook(notebook) {
-            args.push(format!("{}:", nb));
+        // Notebook and folder scope
+        let scope = match (self.resolve_notebook(notebook), folder) {
+            (Some(nb), Some(f)) => format!("{}:{}/", nb, f),
+            (Some(nb), None) => format!("{}:", nb),
+            (None, Some(f)) => format!("{}/", f),
+            (None, None) => String::new(),
+        };
+
+        if !scope.is_empty() {
+            args.push(scope);
         }
 
         // Query
@@ -281,21 +289,50 @@ impl NbClient {
         self.exec(&["delete", &selector, "--force"]).await
     }
 
+    /// Moves or renames a note.
+    pub async fn move_note(
+        &self,
+        id: &str,
+        destination: &str,
+        notebook: Option<&str>,
+    ) -> Result<String, NbError> {
+        let selector = match self.resolve_notebook(notebook) {
+            Some(nb) => format!("{}:{}", nb, id),
+            None => id.to_string(),
+        };
+        // --force skips confirmation prompt
+        self.exec(&["move", &selector, destination, "--force"])
+            .await
+    }
+
     /// Creates a todo item.
     pub async fn todo(
         &self,
         description: &str,
         tags: &[String],
+        folder: Option<&str>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
+        // Notebook-qualified command
         let cmd = match self.resolve_notebook(notebook) {
             Some(nb) => format!("{}:todo", nb),
             None => "todo".to_string(),
         };
         args.push(cmd);
         args.push("add".to_string());
+
+        // Folder path comes as a positional argument before the description
+        if let Some(f) = folder {
+            let path = if f.ends_with('/') {
+                f.to_string()
+            } else {
+                format!("{}/", f)
+            };
+            args.push(path);
+        }
+
         args.push(description.to_string());
 
         for tag in tags {
@@ -330,11 +367,22 @@ impl NbClient {
     }
 
     /// Lists todos.
-    pub async fn tasks(&self, notebook: Option<&str>) -> Result<String, NbError> {
+    pub async fn tasks(
+        &self,
+        folder: Option<&str>,
+        notebook: Option<&str>,
+    ) -> Result<String, NbError> {
         let mut args = vec!["tasks".to_string()];
 
-        if let Some(nb) = self.resolve_notebook(notebook) {
-            args.push(format!("{}:", nb));
+        let scope = match (self.resolve_notebook(notebook), folder) {
+            (Some(nb), Some(f)) => format!("{}:{}/", nb, f),
+            (Some(nb), None) => format!("{}:", nb),
+            (None, Some(f)) => format!("{}/", f),
+            (None, None) => String::new(),
+        };
+
+        if !scope.is_empty() {
+            args.push(scope);
         }
 
         args.push("--no-color".to_string());
@@ -349,13 +397,23 @@ impl NbClient {
         title: Option<&str>,
         tags: &[String],
         comment: Option<&str>,
+        folder: Option<&str>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        let cmd = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:bookmark", nb),
-            None => "bookmark".to_string(),
+        // Build the destination path with optional folder
+        let dest = match (self.resolve_notebook(notebook), folder) {
+            (Some(nb), Some(f)) => format!("{}:{}/", nb, f),
+            (Some(nb), None) => format!("{}:", nb),
+            (None, Some(f)) => format!("{}/", f),
+            (None, None) => String::new(),
+        };
+
+        let cmd = if dest.is_empty() {
+            "bookmark".to_string()
+        } else {
+            format!("{}bookmark", dest)
         };
         args.push(cmd);
         args.push(url.to_string());

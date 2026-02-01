@@ -71,6 +71,11 @@
       "type": "local",
       "command": ["uvx", "librovore", "serve"],
       "enabled": true
+    },
+    "nb": {
+      "type": "local",
+      "command": ["reloaderoo", "--", "cargo", "run", "--release", "--", "--notebook", "nb-mcp-test"],
+      "enabled": true
     }
   },
 

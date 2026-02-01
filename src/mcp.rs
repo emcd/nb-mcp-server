@@ -90,6 +90,17 @@ struct DeleteArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+struct MoveArgs {
+    /// Note ID, filename, or title to move/rename.
+    id: String,
+    /// Destination path or new name. Can be a folder path (ending with /) or a new filename.
+    /// Examples: "new-folder/" (move to folder), "new-name.md" (rename), "folder/new-name.md" (move and rename).
+    destination: String,
+    /// Notebook containing the note (uses default if not specified).
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
 struct ListArgs {
     /// Folder to list (lists root if not specified).
     folder: Option<String>,
@@ -109,6 +120,8 @@ struct SearchArgs {
     /// Filter by tags (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
+    /// Folder to search within (searches all if not specified).
+    folder: Option<String>,
     /// Notebook to search in (uses default if not specified).
     notebook: Option<String>,
 }
@@ -120,6 +133,8 @@ struct TodoArgs {
     /// Tags to apply (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
+    /// Folder to create the todo in.
+    folder: Option<String>,
     /// Notebook to add todo to (uses default if not specified).
     notebook: Option<String>,
 }
@@ -134,6 +149,8 @@ struct TaskIdArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct TasksArgs {
+    /// Folder to list todos from (lists all if not specified).
+    folder: Option<String>,
     /// Notebook to list todos from (uses default if not specified).
     notebook: Option<String>,
 }
@@ -149,6 +166,8 @@ struct BookmarkArgs {
     tags: Vec<String>,
     /// Comment or description.
     comment: Option<String>,
+    /// Folder to create the bookmark in.
+    folder: Option<String>,
     /// Notebook to add bookmark to (uses default if not specified).
     notebook: Option<String>,
 }
@@ -290,6 +309,12 @@ impl McpServer {
                 }
                 self.nb.delete(&args.id, args.notebook.as_deref()).await
             }
+            "move" => {
+                let args: MoveArgs = parse_args(call.args)?;
+                self.nb
+                    .move_note(&args.id, &args.destination, args.notebook.as_deref())
+                    .await
+            }
             "list" => {
                 let args: ListArgs = parse_args(call.args)?;
                 self.nb
@@ -304,13 +329,23 @@ impl McpServer {
             "search" => {
                 let args: SearchArgs = parse_args(call.args)?;
                 self.nb
-                    .search(&args.query, &args.tags, args.notebook.as_deref())
+                    .search(
+                        &args.query,
+                        &args.tags,
+                        args.folder.as_deref(),
+                        args.notebook.as_deref(),
+                    )
                     .await
             }
             "todo" => {
                 let args: TodoArgs = parse_args(call.args)?;
                 self.nb
-                    .todo(&args.description, &args.tags, args.notebook.as_deref())
+                    .todo(
+                        &args.description,
+                        &args.tags,
+                        args.folder.as_deref(),
+                        args.notebook.as_deref(),
+                    )
                     .await
             }
             "do" => {
@@ -323,7 +358,9 @@ impl McpServer {
             }
             "tasks" => {
                 let args: TasksArgs = parse_args(call.args)?;
-                self.nb.tasks(args.notebook.as_deref()).await
+                self.nb
+                    .tasks(args.folder.as_deref(), args.notebook.as_deref())
+                    .await
             }
             "bookmark" => {
                 let args: BookmarkArgs = parse_args(call.args)?;
@@ -333,6 +370,7 @@ impl McpServer {
                         args.title.as_deref(),
                         &args.tags,
                         args.comment.as_deref(),
+                        args.folder.as_deref(),
                         args.notebook.as_deref(),
                     )
                     .await
@@ -423,6 +461,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.show", "description": "Read a note's content"},
                 {"command": "nb.edit", "description": "Update a note's content"},
                 {"command": "nb.delete", "description": "Delete a note (requires confirm: true)"},
+                {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering"},
                 {"command": "nb.search", "description": "Full-text search notes"},
                 {"command": "nb.todo", "description": "Create a todo item"},
@@ -459,6 +498,11 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "nb.delete",
             "Delete a note (requires confirm: true)",
             json_schema_for::<DeleteArgs>(),
+        ),
+        "nb.move" => command_help(
+            "nb.move",
+            "Move or rename a note. Can move between folders or rename the file.",
+            json_schema_for::<MoveArgs>(),
         ),
         "nb.list" => command_help(
             "nb.list",
