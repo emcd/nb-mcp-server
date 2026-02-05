@@ -26,7 +26,7 @@ args = [
   "--release",
   "--",
   "--notebook",
-  "nb-mcp-test",
+  "nb-mcp-server",
   "--no-commit-signing",
 ]
 
