@@ -27,6 +27,10 @@ fn parse_args() -> Config {
             "--no-commit-signing" => {
                 config.commit_signing_disabled = true;
             }
+            "--version" => {
+                println!("nb-mcp {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
             "--help" | "-h" => {
                 eprintln!("nb-mcp: MCP server for nb note-taking");
                 eprintln!();
@@ -36,6 +40,7 @@ fn parse_args() -> Config {
                 eprintln!("  -n, --notebook <NAME>  Default notebook (overrides NB_MCP_NOTEBOOK)");
                 eprintln!("      --no-commit-signing  Disable commit and tag signing");
                 eprintln!("                            in notebook repo");
+                eprintln!("      --version          Show version");
                 eprintln!("  -h, --help             Show this help");
                 std::process::exit(0);
             }

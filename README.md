@@ -58,6 +58,9 @@ NB_MCP_NOTEBOOK=myproject ./target/release/nb-mcp
 
 # Disable commit and tag signing in the notebook repository
 ./target/release/nb-mcp --notebook myproject --no-commit-signing
+
+# Print the installed version
+./target/release/nb-mcp --version
 ```
 
 ### MCP Configuration
