@@ -13,12 +13,26 @@ Ways to Contribute
 Development
 -----------
 
-Architecture
-^^^^^^^^^^^^
+### Architecture
 
 - Review the OpenSpec requirements in `documentation/architecture/openspec`.
   Use the OpenSpec workflow when making changes that affect behavior or user
   experience.
+
+### Hot reload (MCP development)
+
+Use `reloaderoo` to run the MCP server with hot-reload during development:
+
+```json
+{
+  "mcpServers": {
+    "nb": {
+      "command": "reloaderoo",
+      "args": ["--", "cargo", "run", "--release", "--", "--notebook", "myproject"]
+    }
+  }
+}
+```
 
 <!-- TODO: Add guidance and standards section once finalized. -->
 

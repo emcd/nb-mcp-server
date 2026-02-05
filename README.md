@@ -40,17 +40,27 @@ cargo build --release
 
 ### Run
 
+With default notebook from environment:
+
 ```bash
-# With default notebook from environment
 NB_MCP_NOTEBOOK=myproject ./target/release/nb-mcp
+```
 
-# Or via CLI argument (takes precedence)
+Or via CLI argument (takes precedence):
+
+```bash
 ./target/release/nb-mcp --notebook myproject
+```
 
-# Disable commit and tag signing in the notebook repository
+Disable commit and tag signing in the notebook repository:
+
+```bash
 ./target/release/nb-mcp --notebook myproject --no-commit-signing
+```
 
-# Print the installed version
+Print the installed version:
+
+```bash
 ./target/release/nb-mcp --version
 ```
 
@@ -69,22 +79,10 @@ Add to your MCP client configuration (e.g., `.mcp.json`):
 }
 ```
 
-For development with hot-reload via `reloaderoo`:
-
-```json
-{
-  "mcpServers": {
-    "nb": {
-      "command": "reloaderoo",
-      "args": ["--", "cargo", "run", "--release", "--", "--notebook", "myproject"]
-    }
-  }
-}
-```
-
 ## Commands
 
-All commands are accessed via the `nb` tool with a `command` parameter.
+All commands are accessed via the `nb` tool with a `command` parameter to
+reduce the token footprint of the MCP server.
 
 ### Notes
 
@@ -178,17 +176,17 @@ Logs are written to `~/.local/state/nb-mcp/{project}--{worktree}.log` (XDG-compl
 For Git worktrees, logs are named after both the master project and the
 worktree basename to avoid collisions between multiple MCP server instances.
 
-### Commit Signing
-
-Use `--no-commit-signing` to disable commit and tag signing in the notebook
-repository. The server updates the notebook repository's local Git config so
-signing prompts do not block MCP tool calls.
-
 Control log level with `RUST_LOG`:
 
 ```bash
 RUST_LOG=debug nb-mcp --notebook myproject
 ```
+
+### Commit Signing
+
+Use `--no-commit-signing` to disable commit and tag signing in the notebook
+repository. The server updates the notebook repository's local Git config so
+signing prompts do not block MCP tool calls.
 
 ## Contributing
 

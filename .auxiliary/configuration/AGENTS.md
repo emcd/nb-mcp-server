@@ -3,13 +3,13 @@
 - Overview and Quick Start: README.{md,rst}
 - Architecture and Design: @documentation/architecture/
 - Development Practices: @.auxiliary/instructions/
-- Notes and TODOs: @.auxiliary/notes/
+- Notes and TODOs: use the `nb` notebook for this project.
 
 - Use the 'context7' MCP server to retrieve up-to-date documentation for any SDKs or APIs.
 - Use the 'librovore' MCP server to search structured documentation sites with object inventories (Sphinx-based, compatible MkDocs with mkdocstrings). This bridges curated documentation (context7) and raw scraping (firecrawl).
 - Use the 'nb' MCP server for project note-taking, issue tracking, and collaboration. The server provides LLM-friendly access to the `nb` note-taking system with proper escaping and project-specific notebook context.
 - Check README files in directories you're working with for insights about architecture, constraints, and TODO items.
-- Update files under `.auxiliary/notes` during conversation, removing completed tasks and adding emergent items.
+- Track notes and todos in `nb` during conversation, removing completed tasks and adding emergent items.
 
 ## Purpose
 [Describe your project's purpose and goals]
@@ -88,4 +88,4 @@ Use `openspec/AGENTS.md` to learn:
 # Project Notes
 
 <!-- This section accumulates project-specific knowledge, constraints, and deviations.
-     For structured items, use documentation/architecture/decisions/ and .auxiliary/notes/todo.md -->
+     For structured items, use documentation/architecture/decisions/ and `nb`. -->
