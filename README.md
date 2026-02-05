@@ -169,6 +169,9 @@ Priority order:
 If no notebook can be resolved, commands fail with a configuration error. The
 server does not fall back to `nb`'s default notebook.
 
+If the resolved notebook does not exist, the server creates it automatically.
+Use `--no-create-notebook` to disable automatic creation.
+
 ### Logging
 
 Logs are written to `~/.local/state/nb-mcp/{project}--{worktree}.log` (XDG-compliant).

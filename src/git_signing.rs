@@ -6,7 +6,7 @@ use tokio::process::Command;
 use crate::{Config, nb::NbClient};
 
 pub async fn disable_commit_signing(config: &Config) -> Result<Option<PathBuf>> {
-    let nb_client = NbClient::new(config.notebook.as_deref())
+    let nb_client = NbClient::new(config.notebook.as_deref(), config.create_notebook)
         .context("create nb client for commit signing update")?;
     let path = nb_client
         .notebook_path(config.notebook.as_deref())

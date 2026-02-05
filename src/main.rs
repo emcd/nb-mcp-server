@@ -7,12 +7,23 @@ mod nb;
 mod paths;
 
 /// Command-line configuration for the MCP server.
-#[derive(Default)]
 pub struct Config {
     /// Default notebook (CLI --notebook overrides NB_MCP_NOTEBOOK env var).
     pub notebook: Option<String>,
     /// Disable commit and tag signing in the notebook repository.
     pub commit_signing_disabled: bool,
+    /// Automatically create missing notebooks.
+    pub create_notebook: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            notebook: None,
+            commit_signing_disabled: false,
+            create_notebook: true,
+        }
+    }
 }
 
 fn parse_args() -> Config {
@@ -27,6 +38,9 @@ fn parse_args() -> Config {
             "--no-commit-signing" => {
                 config.commit_signing_disabled = true;
             }
+            "--no-create-notebook" => {
+                config.create_notebook = false;
+            }
             "--version" => {
                 println!("nb-mcp {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
@@ -40,6 +54,7 @@ fn parse_args() -> Config {
                 eprintln!("  -n, --notebook <NAME>  Default notebook (overrides NB_MCP_NOTEBOOK)");
                 eprintln!("      --no-commit-signing  Disable commit and tag signing");
                 eprintln!("                            in notebook repo");
+                eprintln!("      --no-create-notebook  Disable automatic notebook creation");
                 eprintln!("      --version          Show version");
                 eprintln!("  -h, --help             Show this help");
                 std::process::exit(0);

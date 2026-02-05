@@ -41,6 +41,8 @@ pub enum NbError {
 pub struct NbClient {
     /// Default notebook to use if not specified per-command.
     default_notebook: Option<String>,
+    /// Automatically create missing notebooks.
+    create_notebook: bool,
 }
 
 impl NbClient {
@@ -48,12 +50,15 @@ impl NbClient {
     ///
     /// CLI notebook argument takes precedence over NB_MCP_NOTEBOOK env var.
     /// Falls back to a Git-derived notebook name when available.
-    pub fn new(cli_notebook: Option<&str>) -> anyhow::Result<Self> {
+    pub fn new(cli_notebook: Option<&str>, create_notebook: bool) -> anyhow::Result<Self> {
         let default_notebook = cli_notebook
             .map(String::from)
             .or_else(|| std::env::var("NB_MCP_NOTEBOOK").ok())
             .or_else(derive_git_notebook_name);
-        Ok(Self { default_notebook })
+        Ok(Self {
+            default_notebook,
+            create_notebook,
+        })
     }
 
     /// Resolves the notebook to use for a command.
@@ -67,6 +72,49 @@ impl NbClient {
         Err(NbError::CommandFailed(
             "notebook not configured; set --notebook or NB_MCP_NOTEBOOK".to_string(),
         ))
+    }
+
+    async fn resolve_notebook(&self, notebook: Option<&str>) -> Result<String, NbError> {
+        let name = self.resolve_notebook_name(notebook)?;
+        self.ensure_notebook(&name).await?;
+        Ok(name)
+    }
+
+    async fn ensure_notebook(&self, notebook: &str) -> Result<(), NbError> {
+        let show_result = self
+            .exec_vec(vec![
+                "notebooks".to_string(),
+                "show".to_string(),
+                notebook.to_string(),
+                "--path".to_string(),
+            ])
+            .await;
+        match show_result {
+            Ok(output) => {
+                if output.trim().is_empty() {
+                    return Err(NbError::CommandFailed(
+                        "nb notebooks path output was empty".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Err(_) => {
+                if !self.create_notebook {
+                    return Err(NbError::CommandFailed(format!(
+                        "notebook not found; run `nb notebooks add {}` or remove \
+                         --no-create-notebook",
+                        notebook
+                    )));
+                }
+                self.exec_vec(vec![
+                    "notebooks".to_string(),
+                    "add".to_string(),
+                    notebook.to_string(),
+                ])
+                .await?;
+                Ok(())
+            }
+        }
     }
 
     /// Executes an nb command and returns stdout.
@@ -112,7 +160,7 @@ impl NbClient {
 
     /// Returns status information about the resolved notebook.
     pub async fn status(&self, notebook: Option<&str>) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         self.exec_vec(vec![format!("{}:", notebook), "status".to_string()])
             .await
     }
@@ -125,7 +173,7 @@ impl NbClient {
 
     /// Returns the path for a notebook.
     pub async fn notebook_path(&self, notebook: Option<&str>) -> Result<PathBuf, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let output = self
             .exec_vec(vec![
                 "notebooks".to_string(),
@@ -154,7 +202,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let cmd = format!("{}:add", notebook);
         args.push(cmd);
 
@@ -190,7 +238,7 @@ impl NbClient {
 
     /// Shows a note's content.
     pub async fn show(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
         self.exec_vec(vec!["show".to_string(), selector, "--no-color".to_string()])
             .await
@@ -206,7 +254,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let cmd = match folder {
             Some(f) => format!("{}:{}/", notebook, f),
             None => format!("{}:", notebook),
@@ -248,7 +296,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = vec!["search".to_string()];
 
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let scope = match folder {
             Some(f) => format!("{}:{}/", notebook, f),
             None => format!("{}:", notebook),
@@ -282,7 +330,7 @@ impl NbClient {
         content: &str,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
         self.exec_vec(vec![
             "edit".to_string(),
@@ -295,7 +343,7 @@ impl NbClient {
 
     /// Deletes a note.
     pub async fn delete(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
         self.exec_vec(vec!["delete".to_string(), selector, "--force".to_string()])
             .await
@@ -308,7 +356,7 @@ impl NbClient {
         destination: &str,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
         self.exec_vec(vec![
             "move".to_string(),
@@ -329,7 +377,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let cmd = format!("{}:todo", notebook);
         args.push(cmd);
         args.push("add".to_string());
@@ -361,14 +409,14 @@ impl NbClient {
 
     /// Marks a todo as done.
     pub async fn do_task(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
         self.exec_vec(vec!["do".to_string(), selector]).await
     }
 
     /// Marks a todo as not done.
     pub async fn undo_task(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
         self.exec_vec(vec!["undo".to_string(), selector]).await
     }
@@ -381,7 +429,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = vec!["tasks".to_string()];
 
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let scope = match folder {
             Some(f) => format!("{}:{}/", notebook, f),
             None => format!("{}:", notebook),
@@ -406,7 +454,7 @@ impl NbClient {
         let mut args = Vec::new();
 
         // Build the destination path with optional folder
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let dest = match folder {
             Some(f) => format!("{}:{}/", notebook, f),
             None => format!("{}:", notebook),
@@ -447,7 +495,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = vec!["list".to_string()];
 
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let path = match parent {
             Some(p) => format!("{}:{}/", notebook, p),
             None => format!("{}:", notebook),
@@ -464,7 +512,7 @@ impl NbClient {
 
     /// Creates a folder.
     pub async fn mkdir(&self, path: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let folder_path = format!("{}:{}/", notebook, path);
         self.exec_vec(vec!["add".to_string(), "folder".to_string(), folder_path])
             .await
@@ -481,7 +529,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        let notebook = self.resolve_notebook_name(notebook)?;
+        let notebook = self.resolve_notebook(notebook).await?;
         let cmd = format!("{}:import", notebook);
         args.push(cmd);
 
