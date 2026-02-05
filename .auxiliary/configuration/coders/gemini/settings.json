@@ -9,6 +9,8 @@
       "mcp__context7__get-library-docs",
       "mcp__librovore__query_content",
       "mcp__librovore__query_inventory",
+      "mcp__nb__nb",
+      "mcp__nb__help",
       "mcp__rust-analyzer__definition",
       "mcp__rust-analyzer__diagnostics",
       "mcp__rust-analyzer__hover",
@@ -32,6 +34,8 @@
       "mcp__context7__get-library-docs",
       "mcp__librovore__query_content",
       "mcp__librovore__query_inventory",
+      "mcp__nb__nb",
+      "mcp__nb__help",
       "mcp__rust-analyzer__definition",
       "mcp__rust-analyzer__diagnostics",
       "mcp__rust-analyzer__hover",
@@ -111,6 +115,10 @@
     "librovore": {
       "command": "uvx",
       "args": [ "librovore", "serve" ]
+    },
+    "nb": {
+      "command": "nb-mcp",
+      "args": ["--notebook", "nb-mcp-server"]
     }
   }
 }

@@ -1,0 +1,29 @@
+model = "gpt-5.2"
+model_reasoning_effort = "high"
+
+# Prefer conservative defaults for shared project configuration.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "cached"
+[mcp_servers.rust-analyzer]
+command = "mcp-language-server"
+args = ["--lsp", "rust-analyzer", "--workspace", "."]
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+
+[mcp_servers.librovore]
+command = "uvx"
+args = ["librovore", "serve"]
+
+[mcp_servers.nb]
+command = "nb-mcp"
+args = ["--notebook", "nb-mcp-server"]
+
+[notice]
+hide_rate_limit_model_nudge = true
+
+[notice.model_migrations]
+"gpt-5.1-codex-max" = "gpt-5.2-codex"
+"gpt-5.2" = "gpt-5.2-codex"

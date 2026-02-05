@@ -29,6 +29,8 @@
       "mcp__context7__resolve-library-id",
       "mcp__librovore__query_content",
       "mcp__librovore__query_inventory",
+      "mcp__nb__nb",
+      "mcp__nb__help",
       "mcp__rust-analyzer__definition",
       "mcp__rust-analyzer__diagnostics",
       "mcp__rust-analyzer__edit_file",
