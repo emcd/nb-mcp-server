@@ -2,7 +2,7 @@
 //!
 //! Handles notebook qualification, escaping, and output parsing.
 
-use std::{process::Stdio, sync::LazyLock};
+use std::{path::PathBuf, process::Stdio, sync::LazyLock};
 
 use regex::Regex;
 use tokio::process::Command;
@@ -47,16 +47,26 @@ impl NbClient {
     /// Creates a new nb client.
     ///
     /// CLI notebook argument takes precedence over NB_MCP_NOTEBOOK env var.
+    /// Falls back to a Git-derived notebook name when available.
     pub fn new(cli_notebook: Option<&str>) -> anyhow::Result<Self> {
         let default_notebook = cli_notebook
             .map(String::from)
-            .or_else(|| std::env::var("NB_MCP_NOTEBOOK").ok());
+            .or_else(|| std::env::var("NB_MCP_NOTEBOOK").ok())
+            .or_else(derive_git_notebook_name);
         Ok(Self { default_notebook })
     }
 
     /// Resolves the notebook to use for a command.
-    fn resolve_notebook<'a>(&'a self, notebook: Option<&'a str>) -> Option<&'a str> {
-        notebook.or(self.default_notebook.as_deref())
+    fn resolve_notebook_name(&self, notebook: Option<&str>) -> Result<String, NbError> {
+        if let Some(name) = notebook {
+            return Ok(name.to_string());
+        }
+        if let Some(name) = self.default_notebook.as_deref() {
+            return Ok(name.to_string());
+        }
+        Err(NbError::CommandFailed(
+            "notebook not configured; set --notebook or NB_MCP_NOTEBOOK".to_string(),
+        ))
     }
 
     /// Executes an nb command and returns stdout.
@@ -100,18 +110,37 @@ impl NbClient {
         self.exec(&args_ref).await
     }
 
-    /// Returns status information about the current/default notebook.
+    /// Returns status information about the resolved notebook.
     pub async fn status(&self, notebook: Option<&str>) -> Result<String, NbError> {
-        match self.resolve_notebook(notebook) {
-            Some(nb) => self.exec(&[&format!("{}:", nb), "status"]).await,
-            None => self.exec(&["status"]).await,
-        }
+        let notebook = self.resolve_notebook_name(notebook)?;
+        self.exec_vec(vec![format!("{}:", notebook), "status".to_string()])
+            .await
     }
 
     /// Lists available notebooks.
     pub async fn notebooks(&self) -> Result<String, NbError> {
         // Use --no-color to avoid ANSI escape codes
         self.exec(&["notebooks", "--no-color"]).await
+    }
+
+    /// Returns the path for a notebook.
+    pub async fn notebook_path(&self, notebook: Option<&str>) -> Result<PathBuf, NbError> {
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let output = self
+            .exec_vec(vec![
+                "notebooks".to_string(),
+                "show".to_string(),
+                notebook,
+                "--path".to_string(),
+            ])
+            .await?;
+        let path = output.trim();
+        if path.is_empty() {
+            return Err(NbError::CommandFailed(
+                "nb notebooks path output was empty".to_string(),
+            ));
+        }
+        Ok(PathBuf::from(path))
     }
 
     /// Creates a new note.
@@ -125,11 +154,8 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        // Notebook-qualified command
-        let cmd = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:add", nb),
-            None => "add".to_string(),
-        };
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let cmd = format!("{}:add", notebook);
         args.push(cmd);
 
         // Title (if provided)
@@ -164,12 +190,10 @@ impl NbClient {
 
     /// Shows a note's content.
     pub async fn show(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let selector = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:{}", nb, id),
-            None => id.to_string(),
-        };
-        // --no-color avoids syntax highlighting ANSI codes
-        self.exec(&["show", &selector, "--no-color"]).await
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let selector = format!("{}:{}", notebook, id);
+        self.exec_vec(vec!["show".to_string(), selector, "--no-color".to_string()])
+            .await
     }
 
     /// Lists notes in a notebook or folder.
@@ -182,22 +206,14 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        // Base command with optional notebook
-        let cmd = match self.resolve_notebook(notebook) {
-            Some(nb) => match folder {
-                Some(f) => format!("{}:{}/", nb, f),
-                None => format!("{}:", nb),
-            },
-            None => match folder {
-                Some(f) => format!("{}/", f),
-                None => String::new(),
-            },
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let cmd = match folder {
+            Some(f) => format!("{}:{}/", notebook, f),
+            None => format!("{}:", notebook),
         };
 
         args.push("list".to_string());
-        if !cmd.is_empty() {
-            args.push(cmd);
-        }
+        args.push(cmd);
 
         // No color for parsing
         args.push("--no-color".to_string());
@@ -232,17 +248,12 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = vec!["search".to_string()];
 
-        // Notebook and folder scope
-        let scope = match (self.resolve_notebook(notebook), folder) {
-            (Some(nb), Some(f)) => format!("{}:{}/", nb, f),
-            (Some(nb), None) => format!("{}:", nb),
-            (None, Some(f)) => format!("{}/", f),
-            (None, None) => String::new(),
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let scope = match folder {
+            Some(f) => format!("{}:{}/", notebook, f),
+            None => format!("{}:", notebook),
         };
-
-        if !scope.is_empty() {
-            args.push(scope);
-        }
+        args.push(scope);
 
         // Query
         args.push(query.to_string());
@@ -271,22 +282,23 @@ impl NbClient {
         content: &str,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let selector = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:{}", nb, id),
-            None => id.to_string(),
-        };
-        // --content replaces the note content
-        self.exec(&["edit", &selector, "--content", content]).await
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let selector = format!("{}:{}", notebook, id);
+        self.exec_vec(vec![
+            "edit".to_string(),
+            selector,
+            "--content".to_string(),
+            content.to_string(),
+        ])
+        .await
     }
 
     /// Deletes a note.
     pub async fn delete(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let selector = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:{}", nb, id),
-            None => id.to_string(),
-        };
-        // --force skips confirmation prompt
-        self.exec(&["delete", &selector, "--force"]).await
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let selector = format!("{}:{}", notebook, id);
+        self.exec_vec(vec!["delete".to_string(), selector, "--force".to_string()])
+            .await
     }
 
     /// Moves or renames a note.
@@ -296,13 +308,15 @@ impl NbClient {
         destination: &str,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let selector = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:{}", nb, id),
-            None => id.to_string(),
-        };
-        // --force skips confirmation prompt
-        self.exec(&["move", &selector, destination, "--force"])
-            .await
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let selector = format!("{}:{}", notebook, id);
+        self.exec_vec(vec![
+            "move".to_string(),
+            selector,
+            destination.to_string(),
+            "--force".to_string(),
+        ])
+        .await
     }
 
     /// Creates a todo item.
@@ -315,11 +329,8 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        // Notebook-qualified command
-        let cmd = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:todo", nb),
-            None => "todo".to_string(),
-        };
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let cmd = format!("{}:todo", notebook);
         args.push(cmd);
         args.push("add".to_string());
 
@@ -350,20 +361,16 @@ impl NbClient {
 
     /// Marks a todo as done.
     pub async fn do_task(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let selector = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:{}", nb, id),
-            None => id.to_string(),
-        };
-        self.exec(&["do", &selector]).await
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let selector = format!("{}:{}", notebook, id);
+        self.exec_vec(vec!["do".to_string(), selector]).await
     }
 
     /// Marks a todo as not done.
     pub async fn undo_task(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let selector = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:{}", nb, id),
-            None => id.to_string(),
-        };
-        self.exec(&["undo", &selector]).await
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let selector = format!("{}:{}", notebook, id);
+        self.exec_vec(vec!["undo".to_string(), selector]).await
     }
 
     /// Lists todos.
@@ -374,16 +381,12 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = vec!["tasks".to_string()];
 
-        let scope = match (self.resolve_notebook(notebook), folder) {
-            (Some(nb), Some(f)) => format!("{}:{}/", nb, f),
-            (Some(nb), None) => format!("{}:", nb),
-            (None, Some(f)) => format!("{}/", f),
-            (None, None) => String::new(),
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let scope = match folder {
+            Some(f) => format!("{}:{}/", notebook, f),
+            None => format!("{}:", notebook),
         };
-
-        if !scope.is_empty() {
-            args.push(scope);
-        }
+        args.push(scope);
 
         args.push("--no-color".to_string());
 
@@ -403,18 +406,13 @@ impl NbClient {
         let mut args = Vec::new();
 
         // Build the destination path with optional folder
-        let dest = match (self.resolve_notebook(notebook), folder) {
-            (Some(nb), Some(f)) => format!("{}:{}/", nb, f),
-            (Some(nb), None) => format!("{}:", nb),
-            (None, Some(f)) => format!("{}/", f),
-            (None, None) => String::new(),
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let dest = match folder {
+            Some(f) => format!("{}:{}/", notebook, f),
+            None => format!("{}:", notebook),
         };
 
-        let cmd = if dest.is_empty() {
-            "bookmark".to_string()
-        } else {
-            format!("{}bookmark", dest)
-        };
+        let cmd = format!("{}bookmark", dest);
         args.push(cmd);
         args.push(url.to_string());
 
@@ -449,20 +447,12 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = vec!["list".to_string()];
 
-        let path = match self.resolve_notebook(notebook) {
-            Some(nb) => match parent {
-                Some(p) => format!("{}:{}/", nb, p),
-                None => format!("{}:", nb),
-            },
-            None => match parent {
-                Some(p) => format!("{}/", p),
-                None => String::new(),
-            },
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let path = match parent {
+            Some(p) => format!("{}:{}/", notebook, p),
+            None => format!("{}:", notebook),
         };
-
-        if !path.is_empty() {
-            args.push(path);
-        }
+        args.push(path);
 
         // Filter to only show folders
         args.push("--type".to_string());
@@ -474,11 +464,10 @@ impl NbClient {
 
     /// Creates a folder.
     pub async fn mkdir(&self, path: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let folder_path = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:{}/", nb, path),
-            None => format!("{}/", path),
-        };
-        self.exec(&["add", "folder", &folder_path]).await
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let folder_path = format!("{}:{}/", notebook, path);
+        self.exec_vec(vec!["add".to_string(), "folder".to_string(), folder_path])
+            .await
     }
 
     /// Imports a file or URL into the notebook.
@@ -492,11 +481,8 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
 
-        // Notebook-qualified command
-        let cmd = match self.resolve_notebook(notebook) {
-            Some(nb) => format!("{}:import", nb),
-            None => "import".to_string(),
-        };
+        let notebook = self.resolve_notebook_name(notebook)?;
+        let cmd = format!("{}:import", notebook);
         args.push(cmd);
 
         // Source path or URL
@@ -521,4 +507,41 @@ impl NbClient {
 
         self.exec_vec(args).await
     }
+}
+
+fn derive_git_notebook_name() -> Option<String> {
+    let current_root = git_rev_parse(&["--show-toplevel"])?;
+    let git_common_dir = git_rev_parse(&["--git-common-dir"])?;
+    let git_common_dir = if git_common_dir.is_relative() {
+        current_root.join(&git_common_dir)
+    } else {
+        git_common_dir
+    };
+    let git_common_dir = git_common_dir.canonicalize().ok()?;
+    let master_root = if git_common_dir.file_name().is_some_and(|n| n == ".git") {
+        git_common_dir.parent()?.to_path_buf()
+    } else {
+        return None;
+    };
+    master_root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_string())
+}
+
+fn git_rev_parse(args: &[&str]) -> Option<PathBuf> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse"])
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    let value = stdout.trim();
+    if value.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(value))
 }

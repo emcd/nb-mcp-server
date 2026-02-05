@@ -9,9 +9,10 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::Config;
+use crate::git_signing;
 use crate::nb::NbClient;
 
 #[derive(Clone)]
@@ -247,6 +248,25 @@ impl rmcp::ServerHandler for McpServer {
 }
 
 pub async fn run(config: Config) -> Result<()> {
+    if config.commit_signing_disabled {
+        match git_signing::disable_commit_signing(&config).await {
+            Ok(Some(path)) => {
+                info!(
+                    repository = %path.display(),
+                    "commit signing disabled for notebook repository"
+                );
+            }
+            Ok(None) => {
+                warn!("commit signing disable requested but notebook repository not found");
+            }
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "commit signing disable requested but update failed"
+                );
+            }
+        }
+    }
     let server = McpServer::new(&config)?;
     info!("starting nb-mcp server");
     if let Some(ref nb) = config.notebook {

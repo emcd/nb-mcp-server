@@ -16,15 +16,16 @@ Using `nb` via shell has two key issues for LLM assistants:
 
 ## Notebook Resolution Strategy
 
-The server should resolve notebook context in this order:
+Notebook resolution behavior is specified in the `notebook-resolution` spec.
+This design assumes the resolution order is:
 
 1. **Explicit parameter**: `notebook: "project-foo"` on any tool call
 2. **Server configuration**: Set via environment variable or config file at startup
-3. **Working directory inference**: Map CWD to a notebook via configurable rules
+3. **Git-derived default**: Use the master worktree path basename
 
 For project-specific use, the recommended pattern is configuring the MCP server
 per-project in `claude_desktop_config.json` or `.mcp.json` with an explicit
-notebook name or CWD-to-notebook mapping.
+notebook name.
 
 ## Proposed Tool Surface
 
@@ -133,10 +134,9 @@ Key points:
 
 ### Response Parsing
 
-`nb` outputs vary by command. The server should:
-- Parse "Added: [id] filename" for creation confirmations
-- Return note content as-is for `show`
-- Parse list output into structured arrays
+`nb` outputs vary by command. The current behavior returns nb output text.
+Potential enhancements include parsing creation confirmations and structured
+list output.
 
 ### Error Handling
 
@@ -209,8 +209,8 @@ Key points:
 
 ### 1. Folder Structure — YES, expose it
 
-Based on real-world usage patterns (e.g., rust-litrpg notes), folders carry
-semantic meaning that tags alone don't capture well:
+Based on real-world usage patterns, folders carry semantic meaning that tags
+alone don't capture well:
 
 ```
 data-models/
@@ -262,11 +262,8 @@ For full content, use `nb.show`. This keeps `nb.list` context-friendly.
 
 ### 3. Destructive Operations — Require confirmation
 
-The MCP layer should require `confirm: true` for:
-- `nb.delete`
-- Any future bulk operations
-
-This prevents accidental deletion when an LLM misunderstands intent.
+Deletion is gated by an explicit confirmation flag to prevent accidental
+removal when intent is unclear.
 
 ### 4. Images/Attachments — Post-MVP
 
@@ -316,7 +313,7 @@ For MVP, defer image support. When added later:
 
 ## Tagging Convention for Multi-LLM Collaboration
 
-Based on Deepseek's proposal (from rust-litrpg experience), use these tag categories:
+Based on a multi-LLM workflow, use these tag categories:
 
 | Category | Pattern | Examples |
 |----------|---------|----------|
@@ -331,7 +328,7 @@ Based on Deepseek's proposal (from rust-litrpg experience), use these tag catego
 ### Why This Matters
 
 In multi-LLM projects, different models work on different parts:
-- Claude might do architecture, GPT might do data modeling, Deepseek might do implementation
+- One model might do architecture, another data modeling, another implementation
 - Handoffs between sessions need clear signals
 - Search by collaborator helps trace decisions
 
@@ -346,7 +343,7 @@ This keeps the API clean while maintaining nb compatibility.
 
 ## LLM Usage Patterns — What I'd Actually Use
 
-Speaking as Claude, here's my honest assessment of frequency:
+Speaking as an LLM assistant, here's an honest assessment of frequency:
 
 ### High Frequency (every session)
 

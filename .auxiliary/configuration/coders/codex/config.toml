@@ -18,8 +18,17 @@ command = "uvx"
 args = ["librovore", "serve"]
 
 [mcp_servers.nb]
-command = "nb-mcp"
-args = ["--notebook", "nb-mcp-server"]
+command = "reloaderoo"
+args = [
+  "--",
+  "cargo",
+  "run",
+  "--release",
+  "--",
+  "--notebook",
+  "nb-mcp-test",
+  "--no-commit-signing",
+]
 
 [notice]
 hide_rate_limit_model_nudge = true

@@ -55,6 +55,9 @@ NB_MCP_NOTEBOOK=myproject ./target/release/nb-mcp
 
 # Or via CLI argument (takes precedence)
 ./target/release/nb-mcp --notebook myproject
+
+# Disable commit and tag signing in the notebook repository
+./target/release/nb-mcp --notebook myproject --no-commit-signing
 ```
 
 ### MCP Configuration
@@ -168,13 +171,23 @@ Priority order:
 1. Per-command `notebook` argument (highest)
 2. CLI `--notebook` flag
 3. `NB_MCP_NOTEBOOK` environment variable
-4. `nb`'s default notebook (lowest)
+4. Git-derived default from the master worktree path
+
+If no notebook can be resolved, commands fail with a configuration error. The
+server does not fall back to `nb`'s default notebook.
 
 ### Logging
 
 Logs are written to `~/.local/state/nb-mcp/{project}--{worktree}.log` (XDG-compliant).
 
-For Git worktrees, logs are named after both the master project and the worktree basename to avoid collisions between multiple MCP server instances.
+For Git worktrees, logs are named after both the master project and the
+worktree basename to avoid collisions between multiple MCP server instances.
+
+### Commit Signing
+
+Use `--no-commit-signing` to disable commit and tag signing in the notebook
+repository. The server updates the notebook repository's local Git config so
+signing prompts do not block MCP tool calls.
 
 Control log level with `RUST_LOG`:
 

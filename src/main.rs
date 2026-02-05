@@ -1,6 +1,7 @@
 use anyhow::Result;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
+mod git_signing;
 mod mcp;
 mod nb;
 mod paths;
@@ -10,6 +11,8 @@ mod paths;
 pub struct Config {
     /// Default notebook (CLI --notebook overrides NB_MCP_NOTEBOOK env var).
     pub notebook: Option<String>,
+    /// Disable commit and tag signing in the notebook repository.
+    pub commit_signing_disabled: bool,
 }
 
 fn parse_args() -> Config {
@@ -21,6 +24,9 @@ fn parse_args() -> Config {
             "--notebook" | "-n" => {
                 config.notebook = args.next();
             }
+            "--no-commit-signing" => {
+                config.commit_signing_disabled = true;
+            }
             "--help" | "-h" => {
                 eprintln!("nb-mcp: MCP server for nb note-taking");
                 eprintln!();
@@ -28,6 +34,8 @@ fn parse_args() -> Config {
                 eprintln!();
                 eprintln!("Options:");
                 eprintln!("  -n, --notebook <NAME>  Default notebook (overrides NB_MCP_NOTEBOOK)");
+                eprintln!("      --no-commit-signing  Disable commit and tag signing");
+                eprintln!("                            in notebook repo");
                 eprintln!("  -h, --help             Show this help");
                 std::process::exit(0);
             }
