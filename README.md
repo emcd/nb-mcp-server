@@ -19,17 +19,8 @@ This MCP server solves both by:
 
 ### Prerequisites
 
-Install `nb`:
-
-```bash
-# macOS
-brew install xwmx/taps/nb
-
-# Debian/Ubuntu
-sudo apt install nb
-
-# Or see https://github.com/xwmx/nb#installation
-```
+Install `nb` by following the official instructions:
+[nb installation guide](https://github.com/xwmx/nb#installation).
 
 ### Installation
 
@@ -154,9 +145,10 @@ Search for notes:
 }
 ```
 
-## Tagging Convention
+## Tagging Suggestions
 
-For multi-LLM projects, use consistent tag prefixes:
+For multi-LLM projects, consider using consistent tag prefixes (optional).
+Example categories and prefixes:
 
 | Category | Pattern | Examples |
 |----------|---------|----------|
@@ -197,6 +189,13 @@ Control log level with `RUST_LOG`:
 ```bash
 RUST_LOG=debug nb-mcp --notebook myproject
 ```
+
+## Contributing
+
+See the contribution guide and code of conduct:
+
+- [Contribution guide](documentation/contribution.md)
+- [Code of conduct](documentation/conduct.md)
 
 ## License
 
