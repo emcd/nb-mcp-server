@@ -194,9 +194,9 @@ RUST_LOG=debug nb-mcp --notebook myproject
 
 See the contribution guide and code of conduct:
 
-- [Contribution guide](documentation/contribution.md)
-- [Code of conduct](documentation/conduct.md)
+- [Contribution guide](https://github.com/emcd/nb-mcp-server/blob/master/documentation/contribution.md)
+- [Code of conduct](https://github.com/emcd/nb-mcp-server/blob/master/documentation/conduct.md)
 
 ## License
 
-[Apache 2.0](LICENSE)
+[Apache 2.0](https://github.com/emcd/nb-mcp-server/blob/master/LICENSE)
