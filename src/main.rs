@@ -14,6 +14,8 @@ pub struct Config {
     pub commit_signing_disabled: bool,
     /// Automatically create missing notebooks.
     pub create_notebook: bool,
+    /// Show notebook and state paths, then exit.
+    pub show_paths: bool,
 }
 
 impl Default for Config {
@@ -22,6 +24,7 @@ impl Default for Config {
             notebook: None,
             commit_signing_disabled: false,
             create_notebook: true,
+            show_paths: false,
         }
     }
 }
@@ -41,6 +44,9 @@ fn parse_args() -> Config {
             "--no-create-notebook" => {
                 config.create_notebook = false;
             }
+            "--show-paths" => {
+                config.show_paths = true;
+            }
             "--version" => {
                 println!("nb-mcp {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
@@ -55,6 +61,7 @@ fn parse_args() -> Config {
                 eprintln!("      --no-commit-signing  Disable commit and tag signing");
                 eprintln!("                            in notebook repo");
                 eprintln!("      --no-create-notebook  Disable automatic notebook creation");
+                eprintln!("      --show-paths       Show notebook path and state directory");
                 eprintln!("      --version          Show version");
                 eprintln!("  -h, --help             Show this help");
                 std::process::exit(0);
@@ -66,6 +73,16 @@ fn parse_args() -> Config {
     }
 
     config
+}
+
+async fn show_paths(config: &Config) -> Result<()> {
+    let nb = nb::NbClient::new(config.notebook.as_deref(), config.create_notebook)?;
+    let notebook_path = nb.notebook_path(config.notebook.as_deref()).await?;
+    let log_path = paths::get_log_path();
+    let state_dir = log_path.parent().unwrap_or(log_path.as_path());
+    println!("notebook_path: {}", notebook_path.display());
+    println!("state_dir: {}", state_dir.display());
+    Ok(())
 }
 
 /// Set up logging to both stderr and a file.
@@ -118,11 +135,16 @@ fn setup_file_logging() -> Option<(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let config = parse_args();
+    if config.show_paths {
+        show_paths(&config).await?;
+        return Ok(());
+    }
+
     setup_logging();
 
     let log_path = paths::get_log_path();
     tracing::info!(log_file = %log_path.display(), "logging initialized");
 
-    let config = parse_args();
     mcp::run(config).await
 }

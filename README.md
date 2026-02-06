@@ -64,6 +64,12 @@ Print the installed version:
 ./target/release/nb-mcp --version
 ```
 
+Show the resolved notebook path and state directory:
+
+```bash
+./target/release/nb-mcp --show-paths
+```
+
 ### MCP Configuration
 
 Add to your MCP client configuration (e.g., `.mcp.json`):
@@ -178,6 +184,8 @@ Logs are written to `~/.local/state/nb-mcp/{project}--{worktree}.log` (XDG-compl
 
 For Git worktrees, logs are named after both the master project and the
 worktree basename to avoid collisions between multiple MCP server instances.
+
+Use `--show-paths` to print the resolved notebook path and state directory.
 
 Control log level with `RUST_LOG`:
 
