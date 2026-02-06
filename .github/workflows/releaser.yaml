@@ -90,6 +90,88 @@ jobs:
           name: binary-${{ matrix.platform }}
           path: ${{ steps.binary.outputs.name }}
 
+  build-mcpb:
+    needs: [initialize, build-binaries]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.initialize.outputs.platforms) }}
+        exclude: ${{ fromJSON(needs.initialize.outputs.matrix-exclusions) }}
+    runs-on: ${{ matrix.platform }}
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Binary Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: artifacts
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install MCPB CLI
+        run: npm install --global @anthropic-ai/mcpb
+
+      - name: Build MCPB Bundle
+        id: mcpb
+        shell: bash
+        run: |
+          set -eu
+          target="${{ fromJSON(needs.initialize.outputs.rust-targets)[matrix.platform] }}"
+          if [[ "${GITHUB_REF_NAME}" == v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' Cargo.toml)"
+          fi
+          manifest_version="0.4"
+          bundle_dir="mcpb-bundle"
+          mkdir -p "${bundle_dir}/server"
+          if [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
+            source_binary="artifacts/nb-mcp-${target}.exe"
+            binary_name="nb-mcp.exe"
+          else
+            source_binary="artifacts/nb-mcp-${target}"
+            binary_name="nb-mcp"
+          fi
+          cp "${source_binary}" "${bundle_dir}/server/${binary_name}"
+          cat >"${bundle_dir}/manifest.json" <<EOF
+          {
+            "manifest_version": "${manifest_version}",
+            "name": "nb-mcp-server",
+            "display_name": "nb-mcp-server",
+            "version": "${version}",
+            "description": "MCP server wrapping the nb CLI for LLM-friendly note-taking",
+            "author": {
+              "name": "emcd"
+            },
+            "server": {
+              "type": "binary",
+              "entry_point": "server/${binary_name}",
+              "mcp_config": {
+                "command": "\${__dirname}/server/${binary_name}",
+                "args": [],
+                "env": {}
+              }
+            },
+            "license": "Apache-2.0"
+          }
+          EOF
+          bundle_file="nb-mcp-server-${version}-${target}.mcpb"
+          mcpb validate "${bundle_dir}/manifest.json"
+          mcpb pack "${bundle_dir}" "${bundle_file}"
+          echo "file=${bundle_file}" >>${GITHUB_OUTPUT}
+
+      - name: Upload MCPB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpb-${{ matrix.platform }}
+          path: ${{ steps.mcpb.outputs.file }}
+
   publish-crates-io:
     if: ${{ !inputs.dry-run && startsWith(github.ref, 'refs/tags/') }}
     needs: [test]
@@ -116,7 +198,7 @@ jobs:
 
   publish-github:
     if: ${{ !inputs.dry-run && startsWith(github.ref, 'refs/tags/') }}
-    needs: [initialize, build-binaries]
+    needs: [initialize, build-binaries, build-mcpb]
     runs-on: ubuntu-latest
     permissions:
       attestations: write
@@ -134,10 +216,18 @@ jobs:
           pattern: binary-*
           merge-multiple: true
 
+      - name: Download All MCPB Bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: mcpb-*
+          merge-multiple: true
+
       - name: Generate Checksums
         working-directory: artifacts
         run: |
-          sha256sum nb-mcp-* >SHA256SUMS.txt
+          shopt -s nullglob
+          sha256sum nb-mcp-* *.mcpb >SHA256SUMS.txt
 
       - name: Attest Build Provenance
         uses: actions/attest-build-provenance@v2
@@ -145,6 +235,7 @@ jobs:
           subject-path: |
             artifacts/SHA256SUMS.txt
             artifacts/nb-mcp-*
+            artifacts/*.mcpb
 
       - name: Create Release
         env:
@@ -161,3 +252,88 @@ jobs:
           gh release upload '${{ github.ref_name }}' \
             artifacts/* \
             --repo '${{ github.repository }}'
+
+  publish-mcp-registry:
+    if: ${{ !inputs.dry-run && startsWith(github.ref, 'refs/tags/') }}
+    needs: [initialize, build-mcpb, publish-github]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+
+      - name: Download MCPB Bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: mcpb-*
+          merge-multiple: true
+
+      - name: Generate server.json
+        shell: python
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          import glob
+          import hashlib
+          import json
+          import os
+          import sys
+
+          files = sorted(glob.glob("artifacts/*.mcpb"))
+          if not files:
+              sys.exit("No MCPB artifacts found.")
+
+          repo = os.environ["REPOSITORY"]
+          ref = os.environ["REF_NAME"]
+          owner = os.environ["OWNER"]
+          version = ref[1:] if ref.startswith("v") else ref
+
+          packages = []
+          for path in files:
+              filename = os.path.basename(path)
+              with open(path, "rb") as handle:
+                  sha256 = hashlib.sha256(handle.read()).hexdigest()
+              packages.append(
+                  {
+                      "registryType": "mcpb",
+                      "identifier": (
+                          f"https://github.com/{repo}/releases/download/"
+                          f"{ref}/{filename}"
+                      ),
+                      "fileSha256": sha256,
+                      "transport": {"type": "stdio"},
+                  }
+              )
+
+          server = {
+              "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+              "name": f"io.github.{owner}/nb-mcp-server",
+              "title": "nb-mcp-server",
+              "description": (
+                  "MCP server wrapping the nb CLI for LLM-friendly note-taking"
+              ),
+              "repository": {"url": f"https://github.com/{repo}", "source": "github"},
+              "version": version,
+              "packages": packages,
+          }
+
+          with open("server.json", "w", encoding="utf-8") as handle:
+              json.dump(server, handle, indent=2)
+              handle.write("\n")
+
+      - name: Install MCP Publisher
+        run: |
+          set -eu
+          mkdir -p "${HOME}/.local/bin"
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          mv mcp-publisher "${HOME}/.local/bin/"
+          echo "${HOME}/.local/bin" >>${GITHUB_PATH}
+
+      - name: Authenticate with Registry
+        run: mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: mcp-publisher publish server.json
