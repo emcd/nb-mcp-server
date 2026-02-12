@@ -76,7 +76,11 @@ fn parse_args() -> Config {
 }
 
 async fn show_paths(config: &Config) -> Result<()> {
-    let nb = nb::NbClient::new(config.notebook.as_deref(), config.create_notebook)?;
+    let nb = nb::NbClient::new(
+        config.notebook.as_deref(),
+        config.create_notebook,
+        config.commit_signing_disabled,
+    )?;
     let notebook_path = nb.notebook_path(config.notebook.as_deref()).await?;
     let log_path = paths::get_log_path();
     let state_dir = log_path.parent().unwrap_or(log_path.as_path());

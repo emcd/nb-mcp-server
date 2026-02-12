@@ -43,6 +43,8 @@ pub struct NbClient {
     default_notebook: Option<String>,
     /// Automatically create missing notebooks.
     create_notebook: bool,
+    /// Disable Git commit and tag signing for `nb` subprocesses.
+    disable_git_signing: bool,
 }
 
 impl NbClient {
@@ -50,7 +52,11 @@ impl NbClient {
     ///
     /// CLI notebook argument takes precedence over NB_MCP_NOTEBOOK env var.
     /// Falls back to a Git-derived notebook name when available.
-    pub fn new(cli_notebook: Option<&str>, create_notebook: bool) -> anyhow::Result<Self> {
+    pub fn new(
+        cli_notebook: Option<&str>,
+        create_notebook: bool,
+        disable_git_signing: bool,
+    ) -> anyhow::Result<Self> {
         let default_notebook = cli_notebook
             .map(String::from)
             .or_else(|| std::env::var("NB_MCP_NOTEBOOK").ok())
@@ -58,6 +64,7 @@ impl NbClient {
         Ok(Self {
             default_notebook,
             create_notebook,
+            disable_git_signing,
         })
     }
 
@@ -120,11 +127,16 @@ impl NbClient {
     /// Executes an nb command and returns stdout.
     async fn exec(&self, args: &[&str]) -> Result<String, NbError> {
         tracing::debug!(?args, "executing nb command");
-        let output = Command::new("nb")
+        let mut command = Command::new("nb");
+        command
             .args(args)
             .stdin(Stdio::null()) // Prevent TTY hangs
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        if self.disable_git_signing {
+            apply_git_signing_env(&mut command);
+        }
+        let output = command
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
@@ -592,4 +604,71 @@ fn git_rev_parse(args: &[&str]) -> Option<PathBuf> {
         return None;
     }
     Some(PathBuf::from(value))
+}
+
+const GIT_SIGNING_OVERRIDES: [(&str, &str); 2] =
+    [("commit.gpgsign", "false"), ("tag.gpgsign", "false")];
+
+fn git_config_count(raw: Option<&str>) -> usize {
+    raw.and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
+fn git_signing_env_vars(start_index: usize) -> Vec<(String, String)> {
+    let total = start_index.saturating_add(GIT_SIGNING_OVERRIDES.len());
+    let mut env_vars = Vec::with_capacity(1 + GIT_SIGNING_OVERRIDES.len() * 2);
+    env_vars.push(("GIT_CONFIG_COUNT".to_string(), total.to_string()));
+    for (offset, (key, value)) in GIT_SIGNING_OVERRIDES.iter().enumerate() {
+        let index = start_index + offset;
+        env_vars.push((format!("GIT_CONFIG_KEY_{index}"), (*key).to_string()));
+        env_vars.push((format!("GIT_CONFIG_VALUE_{index}"), (*value).to_string()));
+    }
+    env_vars
+}
+
+fn apply_git_signing_env(command: &mut Command) {
+    let start_index = git_config_count(std::env::var("GIT_CONFIG_COUNT").ok().as_deref());
+    for (name, value) in git_signing_env_vars(start_index) {
+        command.env(name, value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::{git_config_count, git_signing_env_vars};
+
+    #[test]
+    fn git_config_count_defaults_to_zero() {
+        assert_eq!(git_config_count(None), 0);
+    }
+
+    #[test]
+    fn git_config_count_parses_numeric_values() {
+        assert_eq!(git_config_count(Some("3")), 3);
+    }
+
+    #[test]
+    fn git_config_count_ignores_invalid_values() {
+        assert_eq!(git_config_count(Some("invalid")), 0);
+    }
+
+    #[test]
+    fn git_signing_env_vars_append_from_existing_index() {
+        let vars = git_signing_env_vars(2);
+        let map = vars.into_iter().collect::<BTreeMap<String, String>>();
+
+        assert_eq!(map.get("GIT_CONFIG_COUNT"), Some(&"4".to_string()));
+        assert_eq!(
+            map.get("GIT_CONFIG_KEY_2"),
+            Some(&"commit.gpgsign".to_string())
+        );
+        assert_eq!(map.get("GIT_CONFIG_VALUE_2"), Some(&"false".to_string()));
+        assert_eq!(
+            map.get("GIT_CONFIG_KEY_3"),
+            Some(&"tag.gpgsign".to_string())
+        );
+        assert_eq!(map.get("GIT_CONFIG_VALUE_3"), Some(&"false".to_string()));
+    }
 }

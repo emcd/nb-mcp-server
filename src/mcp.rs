@@ -207,7 +207,11 @@ struct ImportArgs {
 #[tool_router]
 impl McpServer {
     fn new(config: &Config) -> Result<Self> {
-        let nb = NbClient::new(config.notebook.as_deref(), config.create_notebook)?;
+        let nb = NbClient::new(
+            config.notebook.as_deref(),
+            config.create_notebook,
+            config.commit_signing_disabled,
+        )?;
         Ok(Self {
             nb,
             tool_router: Self::tool_router(),
