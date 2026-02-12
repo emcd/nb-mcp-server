@@ -72,6 +72,7 @@
       "run_shell_command(gh run list)",
       "run_shell_command(gh run view)",
       "run_shell_command(gh run watch)",
+      "run_shell_command(gh search issues)",
       "run_shell_command(gh status)",
       "run_shell_command(git add)",
       "run_shell_command(git diff)",
@@ -118,7 +119,10 @@
     },
     "nb": {
       "command": "nb-mcp",
-      "args": ["--notebook", "nb-mcp-server"]
+      "args": [
+        "--notebook", "nb-mcp-server",
+        "--no-commit-signing"
+      ]
     }
   }
 }

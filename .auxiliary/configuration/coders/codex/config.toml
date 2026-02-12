@@ -1,13 +1,16 @@
-model = "gpt-5.2"
+model = "gpt-5.3-codex"
 model_reasoning_effort = "high"
+personality = "friendly"
 
-# Prefer conservative defaults for shared project configuration.
-approval_policy = "on-request"
-sandbox_mode = "workspace-write"
-web_search = "cached"
+# approval_policy = "on-request"
+# sandbox_mode = "workspace-write"
+trust_level = "trusted"
+# web_search = "cached"
 [mcp_servers.rust-analyzer]
-command = "mcp-language-server"
-args = ["--lsp", "rust-analyzer", "--workspace", "."]
+command = "/bin/bash"
+args = ["-lc", "mcp-language-server --lsp rust-analyzer --workspace . 2>/dev/null"]
+startup_timeout_sec = 30
+tool_timeout_sec = 90
 
 [mcp_servers.context7]
 command = "npx"
@@ -29,10 +32,3 @@ args = [
   "nb-mcp-server",
   "--no-commit-signing",
 ]
-
-[notice]
-hide_rate_limit_model_nudge = true
-
-[notice.model_migrations]
-"gpt-5.1-codex-max" = "gpt-5.2-codex"
-"gpt-5.2" = "gpt-5.2-codex"

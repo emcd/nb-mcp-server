@@ -74,7 +74,12 @@
     },
     "nb": {
       "type": "local",
-      "command": ["reloaderoo", "--", "cargo", "run", "--release", "--", "--notebook", "nb-mcp-server"],
+      "command": [
+        "reloaderoo", "--",
+        "cargo", "run", "--release", "--",
+        "--notebook", "nb-mcp-server",
+        "--no-commit-signing"
+      ],
       "enabled": true
     }
   },
@@ -107,6 +112,7 @@
       "gh run list *": "allow",
       "gh run view *": "allow",
       "gh run watch *": "allow",
+      "gh search issues *": "allow",
       "gh status *": "allow",
       "git add *": "allow",
       "git branch *": "allow",

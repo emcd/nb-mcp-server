@@ -21,7 +21,8 @@
         "--release",
         "--",
         "--notebook",
-        "nb-mcp-server"
+        "nb-mcp-server",
+        "--no-commit-signing"
       ]
     }
   }

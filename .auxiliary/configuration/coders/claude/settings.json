@@ -62,6 +62,7 @@
       "Bash(gh run list *)",
       "Bash(gh run view *)",
       "Bash(gh run watch *)",
+      "Bash(gh search issues *)",
       "Bash(gh status *)",
       "Bash(git add *)",
       "Bash(git branch *)",

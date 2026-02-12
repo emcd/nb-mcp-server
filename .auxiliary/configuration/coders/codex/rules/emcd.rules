@@ -85,6 +85,11 @@ prefix_rule(
     decision="allow",
     justification="Read GitHub Actions runs.",
 )
+prefix_rule(
+    pattern=["gh", "search", "issues"],
+    decision="allow",
+    justification="Search GitHub issues.",
+)
 
 # Rust workflows.
 prefix_rule(pattern=["cargo", ["build", "check", "clippy", "test"]], decision="allow")
