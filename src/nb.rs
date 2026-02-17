@@ -5,6 +5,8 @@
 use std::{path::PathBuf, process::Stdio, sync::LazyLock};
 
 use regex::Regex;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use tokio::process::Command;
 
 /// Regex to match ANSI/ISO 2022 escape sequences.
@@ -45,6 +47,19 @@ pub struct NbClient {
     create_notebook: bool,
     /// Disable Git commit and tag signing for `nb` subprocesses.
     disable_git_signing: bool,
+}
+
+/// Behavior mode for `nb edit` content updates.
+#[derive(Debug, Clone, Copy, Default, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EditMode {
+    /// Replace note content using `nb edit --overwrite`.
+    #[default]
+    Replace,
+    /// Append content using `nb edit --content` (nb default behavior).
+    Append,
+    /// Prepend content using `nb edit --prepend`.
+    Prepend,
 }
 
 impl NbClient {
@@ -335,22 +350,17 @@ impl NbClient {
         self.exec_vec(args).await
     }
 
-    /// Edits a note by replacing its content.
+    /// Edits a note using the provided content mode.
     pub async fn edit(
         &self,
         id: &str,
         content: &str,
+        mode: EditMode,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
-        self.exec_vec(vec![
-            "edit".to_string(),
-            selector,
-            "--content".to_string(),
-            content.to_string(),
-        ])
-        .await
+        self.exec_vec(edit_args(selector, content, mode)).await
     }
 
     /// Deletes a note.
@@ -606,6 +616,18 @@ fn git_rev_parse(args: &[&str]) -> Option<PathBuf> {
     Some(PathBuf::from(value))
 }
 
+fn edit_args(selector: String, content: &str, mode: EditMode) -> Vec<String> {
+    let mut args = vec!["edit".to_string(), selector];
+    match mode {
+        EditMode::Replace => args.push("--overwrite".to_string()),
+        EditMode::Append => {}
+        EditMode::Prepend => args.push("--prepend".to_string()),
+    }
+    args.push("--content".to_string());
+    args.push(content.to_string());
+    args
+}
+
 const GIT_SIGNING_OVERRIDES: [(&str, &str); 2] =
     [("commit.gpgsign", "false"), ("tag.gpgsign", "false")];
 
@@ -637,7 +659,51 @@ fn apply_git_signing_env(command: &mut Command) {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{git_config_count, git_signing_env_vars};
+    use super::{EditMode, edit_args, git_config_count, git_signing_env_vars};
+
+    #[test]
+    fn edit_args_defaults_to_overwrite_mode() {
+        let args = edit_args("example:12".to_string(), "updated", EditMode::Replace);
+        assert_eq!(
+            args,
+            vec![
+                "edit".to_string(),
+                "example:12".to_string(),
+                "--overwrite".to_string(),
+                "--content".to_string(),
+                "updated".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn edit_args_supports_append_mode() {
+        let args = edit_args("example:12".to_string(), "updated", EditMode::Append);
+        assert_eq!(
+            args,
+            vec![
+                "edit".to_string(),
+                "example:12".to_string(),
+                "--content".to_string(),
+                "updated".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn edit_args_supports_prepend_mode() {
+        let args = edit_args("example:12".to_string(), "updated", EditMode::Prepend);
+        assert_eq!(
+            args,
+            vec![
+                "edit".to_string(),
+                "example:12".to_string(),
+                "--prepend".to_string(),
+                "--content".to_string(),
+                "updated".to_string(),
+            ]
+        );
+    }
 
     #[test]
     fn git_config_count_defaults_to_zero() {

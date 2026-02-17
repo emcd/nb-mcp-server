@@ -13,7 +13,7 @@ use tracing::{info, warn};
 
 use crate::Config;
 use crate::git_signing;
-use crate::nb::NbClient;
+use crate::nb::{EditMode, NbClient};
 
 #[derive(Clone)]
 struct McpServer {
@@ -73,8 +73,11 @@ struct ShowArgs {
 struct EditArgs {
     /// Note ID, filename, or title to edit.
     id: String,
-    /// New content for the note (replaces existing content).
+    /// New content for the note.
     content: String,
+    /// Edit mode: `replace` (default), `append`, or `prepend`.
+    #[serde(default)]
+    mode: EditMode,
     /// Notebook containing the note (uses default if not specified).
     notebook: Option<String>,
 }
@@ -317,7 +320,7 @@ impl McpServer {
             "edit" => {
                 let args: EditArgs = parse_args(call.args)?;
                 self.nb
-                    .edit(&args.id, &args.content, args.notebook.as_deref())
+                    .edit(&args.id, &args.content, args.mode, args.notebook.as_deref())
                     .await
             }
             "delete" => {
@@ -483,7 +486,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.notebooks", "description": "List available notebooks"},
                 {"command": "nb.add", "description": "Create a new note"},
                 {"command": "nb.show", "description": "Read a note's content"},
-                {"command": "nb.edit", "description": "Update a note's content"},
+                {"command": "nb.edit", "description": "Update a note's content (replace by default)"},
                 {"command": "nb.delete", "description": "Delete a note (requires confirm: true)"},
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering"},
@@ -515,7 +518,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.edit" => command_help(
             "nb.edit",
-            "Update a note's content",
+            "Update a note's content (replace by default)",
             json_schema_for::<EditArgs>(),
         ),
         "nb.delete" => command_help(
