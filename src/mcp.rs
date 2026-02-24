@@ -133,6 +133,7 @@ struct SearchArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct TodoArgs {
     /// Description of the todo item.
+    #[serde(alias = "title")]
     description: String,
     /// Tags to apply (without # prefix).
     #[serde(default)]
@@ -179,6 +180,7 @@ struct BookmarkArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct FoldersArgs {
     /// Parent folder to list (lists root if not specified).
+    #[serde(alias = "folder")]
     parent: Option<String>,
     /// Notebook to list folders from (uses default if not specified).
     notebook: Option<String>,
@@ -187,6 +189,7 @@ struct FoldersArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct MkdirArgs {
     /// Path of folder to create.
+    #[serde(alias = "folder")]
     path: String,
     /// Notebook to create folder in (uses default if not specified).
     notebook: Option<String>,
@@ -222,7 +225,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for schemas."
+        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}}. This is a curated wrapper (not a 1:1 map of nb CLI flags). Common args include id, folder, tags, and optional notebook. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -481,6 +484,13 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
     let response = match query {
         "nb" => serde_json::json!({
             "namespace": "nb",
+            "shape_hints": [
+                "Invoke the nb tool with params: {\"command\":\"nb.<subcommand>\",\"args\":{...}}.",
+                "This MCP API is a curated subset of nb CLI behavior and flags.",
+                "Common fields: id selector, folder path, tags array, optional notebook override.",
+                "Compatibility aliases: nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
+                "Call help with query 'nb.<command>' for exact command schemas."
+            ],
             "commands": [
                 {"command": "nb.status", "description": "Show current notebook and stats"},
                 {"command": "nb.notebooks", "description": "List available notebooks"},
@@ -611,4 +621,29 @@ fn command_help(command: &str, description: &str, schema: serde_json::Value) -> 
 
 fn json_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(T)).unwrap_or(serde_json::Value::Null)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{FoldersArgs, MkdirArgs, TodoArgs, parse_args};
+
+    #[test]
+    fn todo_args_accept_title_alias() {
+        let args = parse_args::<TodoArgs>(json!({"title": "follow up"})).unwrap();
+        assert_eq!(args.description, "follow up");
+    }
+
+    #[test]
+    fn folders_args_accept_folder_alias() {
+        let args = parse_args::<FoldersArgs>(json!({"folder": "coordination/general"})).unwrap();
+        assert_eq!(args.parent.as_deref(), Some("coordination/general"));
+    }
+
+    #[test]
+    fn mkdir_args_accept_folder_alias() {
+        let args = parse_args::<MkdirArgs>(json!({"folder": "coordination/general"})).unwrap();
+        assert_eq!(args.path, "coordination/general");
+    }
 }
