@@ -95,9 +95,9 @@ reduce the token footprint of the MCP server.
 | Command | Description | Key Arguments |
 |---------|-------------|---------------|
 | `nb.add` | Create a note | `title`, `content`, `tags[]`, `folder` |
-| `nb.show` | Read a note | `id` |
-| `nb.edit` | Update a note | `id`, `content`, `mode` (`replace` default, `append`, `prepend`) |
-| `nb.delete` | Delete a note | `id`, `confirm: true` (required) |
+| `nb.show` | Read a note | `id` (alias: `selector`) |
+| `nb.edit` | Update a note | `id` (alias: `selector`), `content`, `mode` (`replace` default, `append`, `prepend`) |
+| `nb.delete` | Delete a note | `id` (alias: `selector`), `confirm: true` (required) |
 | `nb.list` | List notes | `folder`, `tags[]`, `limit` |
 | `nb.search` | Full-text search | `query`, `tags[]` |
 
@@ -106,8 +106,8 @@ reduce the token footprint of the MCP server.
 | Command | Description | Key Arguments |
 |---------|-------------|---------------|
 | `nb.todo` | Create a todo | `description`, `tags[]` |
-| `nb.do` | Mark complete | `id`, optional `task_number` |
-| `nb.undo` | Reopen | `id`, optional `task_number` |
+| `nb.do` | Mark complete | `id` (alias: `selector`), optional `task_number` |
+| `nb.undo` | Reopen | `id` (alias: `selector`), optional `task_number` |
 | `nb.tasks` | List todos | optional `status` (`open` or `closed`) |
 
 ### Organization
@@ -118,7 +118,7 @@ reduce the token footprint of the MCP server.
 | `nb.import` | Import file/URL | `source`, `folder`, `filename`, `convert` |
 | `nb.folders` | List folders | `parent` |
 | `nb.mkdir` | Create folder | `path` |
-| `nb.notebooks` | List notebooks | (none) |
+| `nb.notebooks` | List notebooks only | (none) |
 | `nb.status` | Notebook info | (none) |
 
 ## Examples

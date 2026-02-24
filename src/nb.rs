@@ -133,8 +133,8 @@ impl NbClient {
             Err(_) => {
                 if !self.create_notebook {
                     return Err(NbError::CommandFailed(format!(
-                        "notebook not found; run `nb notebooks add {}` or remove \
-                         --no-create-notebook",
+                        "notebook not found; create it with the nb CLI (`nb notebooks add {}`) \
+                         or remove --no-create-notebook",
                         notebook
                     )));
                 }

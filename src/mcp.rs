@@ -64,6 +64,7 @@ struct AddArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct ShowArgs {
     /// Note ID, filename, or title to show.
+    #[serde(alias = "selector")]
     id: String,
     /// Notebook to read from (uses default if not specified).
     notebook: Option<String>,
@@ -72,6 +73,7 @@ struct ShowArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct EditArgs {
     /// Note ID, filename, or title to edit.
+    #[serde(alias = "selector")]
     id: String,
     /// New content for the note.
     content: String,
@@ -85,6 +87,7 @@ struct EditArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct DeleteArgs {
     /// Note ID, filename, or title to delete.
+    #[serde(alias = "selector")]
     id: String,
     /// Must be true to confirm deletion.
     #[serde(default)]
@@ -96,6 +99,7 @@ struct DeleteArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct MoveArgs {
     /// Note ID, filename, or title to move/rename.
+    #[serde(alias = "selector")]
     id: String,
     /// Destination path or new name. Can be a folder path (ending with /) or a new filename.
     /// Examples: "new-folder/" (move to folder), "new-name.md" (rename), "folder/new-name.md" (move and rename).
@@ -147,6 +151,7 @@ struct TodoArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct TaskIdArgs {
     /// Todo ID to mark as done/undone.
+    #[serde(alias = "selector")]
     id: String,
     /// Optional task number within a todo item.
     #[serde(alias = "task")]
@@ -231,7 +236,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}}. This is a curated wrapper (not a 1:1 map of nb CLI flags). Common args include id, folder, tags, and optional notebook. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
+        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}}. This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector). Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -501,13 +506,13 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "shape_hints": [
                 "Invoke the nb tool with params: {\"command\":\"nb.<subcommand>\",\"args\":{...}}.",
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
-                "Common fields: id selector, folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
-                "Compatibility aliases: nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
+                "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
+                "Compatibility aliases: note commands selector->id, nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
                 "Call help with query 'nb.<command>' for exact command schemas."
             ],
             "commands": [
                 {"command": "nb.status", "description": "Show current notebook and stats"},
-                {"command": "nb.notebooks", "description": "List available notebooks"},
+                {"command": "nb.notebooks", "description": "List available notebooks (list-only; no add/delete in MCP)"},
                 {"command": "nb.add", "description": "Create a new note"},
                 {"command": "nb.show", "description": "Read a note's content"},
                 {"command": "nb.edit", "description": "Update a note's content (replace by default)"},
@@ -607,7 +612,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.notebooks" => command_help(
             "nb.notebooks",
-            "List available notebooks",
+            "List available notebooks (list-only; notebook creation/deletion is not exposed via MCP)",
             serde_json::json!({"type": "object", "properties": {}}),
         ),
         _ => {
@@ -641,7 +646,10 @@ fn json_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
 mod tests {
     use serde_json::json;
 
-    use super::{FoldersArgs, MkdirArgs, TaskIdArgs, TaskStatus, TasksArgs, TodoArgs, parse_args};
+    use super::{
+        DeleteArgs, EditArgs, FoldersArgs, MkdirArgs, MoveArgs, ShowArgs, TaskIdArgs, TaskStatus,
+        TasksArgs, TodoArgs, parse_args,
+    };
 
     #[test]
     fn todo_args_accept_title_alias() {
@@ -665,6 +673,40 @@ mod tests {
     fn task_id_args_accept_task_alias() {
         let args = parse_args::<TaskIdArgs>(json!({"id": "21", "task": 2})).unwrap();
         assert_eq!(args.task_number, Some(2));
+    }
+
+    #[test]
+    fn show_args_accept_selector_alias() {
+        let args = parse_args::<ShowArgs>(json!({"selector": "21"})).unwrap();
+        assert_eq!(args.id, "21");
+    }
+
+    #[test]
+    fn edit_args_accept_selector_alias() {
+        let args = parse_args::<EditArgs>(json!({"selector": "21", "content": "updated"})).unwrap();
+        assert_eq!(args.id, "21");
+        assert_eq!(args.content, "updated");
+    }
+
+    #[test]
+    fn delete_args_accept_selector_alias() {
+        let args = parse_args::<DeleteArgs>(json!({"selector": "21", "confirm": true})).unwrap();
+        assert_eq!(args.id, "21");
+        assert!(args.confirm);
+    }
+
+    #[test]
+    fn move_args_accept_selector_alias() {
+        let args =
+            parse_args::<MoveArgs>(json!({"selector": "21", "destination": "archive/"})).unwrap();
+        assert_eq!(args.id, "21");
+        assert_eq!(args.destination, "archive/");
+    }
+
+    #[test]
+    fn task_id_args_accept_selector_alias() {
+        let args = parse_args::<TaskIdArgs>(json!({"selector": "21"})).unwrap();
+        assert_eq!(args.id, "21");
     }
 
     #[test]
