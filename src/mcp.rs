@@ -13,7 +13,7 @@ use tracing::{info, warn};
 
 use crate::Config;
 use crate::git_signing;
-use crate::nb::{EditMode, NbClient};
+use crate::nb::{EditMode, NbClient, TaskStatus};
 
 #[derive(Clone)]
 struct McpServer {
@@ -148,6 +148,9 @@ struct TodoArgs {
 struct TaskIdArgs {
     /// Todo ID to mark as done/undone.
     id: String,
+    /// Optional task number within a todo item.
+    #[serde(alias = "task")]
+    task_number: Option<u32>,
     /// Notebook containing the todo (uses default if not specified).
     notebook: Option<String>,
 }
@@ -156,6 +159,9 @@ struct TaskIdArgs {
 struct TasksArgs {
     /// Folder to list todos from (lists all if not specified).
     folder: Option<String>,
+    /// Optional status filter (`open` or `closed`).
+    #[serde(alias = "state")]
+    status: Option<TaskStatus>,
     /// Notebook to list todos from (uses default if not specified).
     notebook: Option<String>,
 }
@@ -380,16 +386,24 @@ impl McpServer {
             }
             "do" => {
                 let args: TaskIdArgs = parse_args(call.args)?;
-                self.nb.do_task(&args.id, args.notebook.as_deref()).await
+                self.nb
+                    .do_task(&args.id, args.task_number, args.notebook.as_deref())
+                    .await
             }
             "undo" => {
                 let args: TaskIdArgs = parse_args(call.args)?;
-                self.nb.undo_task(&args.id, args.notebook.as_deref()).await
+                self.nb
+                    .undo_task(&args.id, args.task_number, args.notebook.as_deref())
+                    .await
             }
             "tasks" => {
                 let args: TasksArgs = parse_args(call.args)?;
                 self.nb
-                    .tasks(args.folder.as_deref(), args.notebook.as_deref())
+                    .tasks(
+                        args.folder.as_deref(),
+                        args.status,
+                        args.notebook.as_deref(),
+                    )
                     .await
             }
             "bookmark" => {
@@ -487,7 +501,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "shape_hints": [
                 "Invoke the nb tool with params: {\"command\":\"nb.<subcommand>\",\"args\":{...}}.",
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
-                "Common fields: id selector, folder path, tags array, optional notebook override.",
+                "Common fields: id selector, folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
                 "Compatibility aliases: nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
                 "Call help with query 'nb.<command>' for exact command schemas."
             ],
@@ -502,9 +516,9 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.list", "description": "List notes with optional filtering"},
                 {"command": "nb.search", "description": "Full-text search notes"},
                 {"command": "nb.todo", "description": "Create a todo item"},
-                {"command": "nb.do", "description": "Mark a todo as complete"},
-                {"command": "nb.undo", "description": "Reopen a completed todo"},
-                {"command": "nb.tasks", "description": "List todo items"},
+                {"command": "nb.do", "description": "Mark a todo as complete (optional task_number)"},
+                {"command": "nb.undo", "description": "Reopen a completed todo (optional task_number)"},
+                {"command": "nb.tasks", "description": "List todo items (optional status: open|closed)"},
                 {"command": "nb.bookmark", "description": "Save a URL as a bookmark"},
                 {"command": "nb.folders", "description": "List folders in notebook"},
                 {"command": "nb.mkdir", "description": "Create a folder"},
@@ -558,17 +572,17 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.do" => command_help(
             "nb.do",
-            "Mark a todo as complete",
+            "Mark a todo as complete (optional task_number)",
             json_schema_for::<TaskIdArgs>(),
         ),
         "nb.undo" => command_help(
             "nb.undo",
-            "Reopen a completed todo",
+            "Reopen a completed todo (optional task_number)",
             json_schema_for::<TaskIdArgs>(),
         ),
         "nb.tasks" => command_help(
             "nb.tasks",
-            "List todo items",
+            "List todo items (optional status: open|closed)",
             json_schema_for::<TasksArgs>(),
         ),
         "nb.bookmark" => command_help(
@@ -627,7 +641,7 @@ fn json_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
 mod tests {
     use serde_json::json;
 
-    use super::{FoldersArgs, MkdirArgs, TodoArgs, parse_args};
+    use super::{FoldersArgs, MkdirArgs, TaskIdArgs, TaskStatus, TasksArgs, TodoArgs, parse_args};
 
     #[test]
     fn todo_args_accept_title_alias() {
@@ -645,5 +659,17 @@ mod tests {
     fn mkdir_args_accept_folder_alias() {
         let args = parse_args::<MkdirArgs>(json!({"folder": "coordination/general"})).unwrap();
         assert_eq!(args.path, "coordination/general");
+    }
+
+    #[test]
+    fn task_id_args_accept_task_alias() {
+        let args = parse_args::<TaskIdArgs>(json!({"id": "21", "task": 2})).unwrap();
+        assert_eq!(args.task_number, Some(2));
+    }
+
+    #[test]
+    fn tasks_args_accept_state_alias() {
+        let args = parse_args::<TasksArgs>(json!({"state": "open"})).unwrap();
+        assert_eq!(args.status, Some(TaskStatus::Open));
     }
 }

@@ -62,6 +62,16 @@ pub enum EditMode {
     Prepend,
 }
 
+/// Status filter for `nb tasks`.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskStatus {
+    /// Return open tasks.
+    Open,
+    /// Return closed tasks.
+    Closed,
+}
+
 impl NbClient {
     /// Creates a new nb client.
     ///
@@ -430,37 +440,44 @@ impl NbClient {
     }
 
     /// Marks a todo as done.
-    pub async fn do_task(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
+    pub async fn do_task(
+        &self,
+        id: &str,
+        task_number: Option<u32>,
+        notebook: Option<&str>,
+    ) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
-        self.exec_vec(vec!["do".to_string(), selector]).await
+        self.exec_vec(task_command_args("do", selector, task_number))
+            .await
     }
 
     /// Marks a todo as not done.
-    pub async fn undo_task(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
+    pub async fn undo_task(
+        &self,
+        id: &str,
+        task_number: Option<u32>,
+        notebook: Option<&str>,
+    ) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
-        self.exec_vec(vec!["undo".to_string(), selector]).await
+        self.exec_vec(task_command_args("undo", selector, task_number))
+            .await
     }
 
     /// Lists todos.
     pub async fn tasks(
         &self,
         folder: Option<&str>,
+        status: Option<TaskStatus>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let mut args = vec!["tasks".to_string()];
-
         let notebook = self.resolve_notebook(notebook).await?;
         let scope = match folder {
             Some(f) => format!("{}:{}/", notebook, f),
             None => format!("{}:", notebook),
         };
-        args.push(scope);
-
-        args.push("--no-color".to_string());
-
-        self.exec_vec(args).await
+        self.exec_vec(tasks_command_args(scope, status)).await
     }
 
     /// Creates a bookmark.
@@ -628,6 +645,27 @@ fn edit_args(selector: String, content: &str, mode: EditMode) -> Vec<String> {
     args
 }
 
+fn task_command_args(action: &str, selector: String, task_number: Option<u32>) -> Vec<String> {
+    let mut args = vec![action.to_string(), selector];
+    if let Some(number) = task_number {
+        args.push(number.to_string());
+    }
+    args
+}
+
+fn tasks_command_args(scope: String, status: Option<TaskStatus>) -> Vec<String> {
+    let mut args = vec!["tasks".to_string(), scope];
+    if let Some(filter) = status {
+        let status = match filter {
+            TaskStatus::Open => "open",
+            TaskStatus::Closed => "closed",
+        };
+        args.push(status.to_string());
+    }
+    args.push("--no-color".to_string());
+    args
+}
+
 const GIT_SIGNING_OVERRIDES: [(&str, &str); 2] =
     [("commit.gpgsign", "false"), ("tag.gpgsign", "false")];
 
@@ -659,7 +697,10 @@ fn apply_git_signing_env(command: &mut Command) {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{EditMode, edit_args, git_config_count, git_signing_env_vars};
+    use super::{
+        EditMode, TaskStatus, edit_args, git_config_count, git_signing_env_vars, task_command_args,
+        tasks_command_args,
+    };
 
     #[test]
     fn edit_args_defaults_to_overwrite_mode() {
@@ -701,6 +742,48 @@ mod tests {
                 "--prepend".to_string(),
                 "--content".to_string(),
                 "updated".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn task_command_args_support_task_number() {
+        let args = task_command_args("do", "example:42".to_string(), Some(3));
+        assert_eq!(
+            args,
+            vec!["do".to_string(), "example:42".to_string(), "3".to_string()]
+        );
+    }
+
+    #[test]
+    fn task_command_args_allow_omitted_task_number() {
+        let args = task_command_args("undo", "example:42".to_string(), None);
+        assert_eq!(args, vec!["undo".to_string(), "example:42".to_string()]);
+    }
+
+    #[test]
+    fn tasks_command_args_support_status_filter() {
+        let args = tasks_command_args("example:todos/".to_string(), Some(TaskStatus::Closed));
+        assert_eq!(
+            args,
+            vec![
+                "tasks".to_string(),
+                "example:todos/".to_string(),
+                "closed".to_string(),
+                "--no-color".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn tasks_command_args_allow_no_status_filter() {
+        let args = tasks_command_args("example:".to_string(), None);
+        assert_eq!(
+            args,
+            vec![
+                "tasks".to_string(),
+                "example:".to_string(),
+                "--no-color".to_string(),
             ]
         );
     }
