@@ -403,40 +403,20 @@ impl NbClient {
     pub async fn todo(
         &self,
         description: &str,
+        tasks: &[String],
         tags: &[String],
         folder: Option<&str>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let mut args = Vec::new();
-
         let notebook = self.resolve_notebook(notebook).await?;
-        let cmd = format!("{}:todo", notebook);
-        args.push(cmd);
-        args.push("add".to_string());
-
-        // Folder path comes as a positional argument before the description
-        if let Some(f) = folder {
-            let path = if f.ends_with('/') {
-                f.to_string()
-            } else {
-                format!("{}/", f)
-            };
-            args.push(path);
-        }
-
-        args.push(description.to_string());
-
-        for tag in tags {
-            args.push("--tags".to_string());
-            let tag_str = if tag.starts_with('#') {
-                tag.clone()
-            } else {
-                format!("#{}", tag)
-            };
-            args.push(tag_str);
-        }
-
-        self.exec_vec(args).await
+        self.exec_vec(todo_command_args(
+            &notebook,
+            description,
+            tasks,
+            tags,
+            folder,
+        ))
+        .await
     }
 
     /// Marks a todo as done.
@@ -708,6 +688,51 @@ fn task_command_args(action: &str, selector: String, task_number: Option<u32>) -
     args
 }
 
+fn todo_command_args(
+    notebook: &str,
+    description: &str,
+    tasks: &[String],
+    tags: &[String],
+    folder: Option<&str>,
+) -> Vec<String> {
+    let mut args = vec![format!("{notebook}:todo"), "add".to_string()];
+
+    // Folder path comes as a positional argument before the description.
+    if let Some(folder) = folder {
+        args.push(folder_scope(folder));
+    }
+
+    args.push(description.to_string());
+
+    for task in tasks {
+        args.push("--task".to_string());
+        args.push(task.to_string());
+    }
+
+    for tag in tags {
+        args.push("--tags".to_string());
+        args.push(normalize_tag(tag));
+    }
+
+    args
+}
+
+fn folder_scope(folder: &str) -> String {
+    if folder.ends_with('/') {
+        folder.to_string()
+    } else {
+        format!("{folder}/")
+    }
+}
+
+fn normalize_tag(tag: &str) -> String {
+    if tag.starts_with('#') {
+        tag.to_string()
+    } else {
+        format!("#{tag}")
+    }
+}
+
 fn normalize_folder(folder: &str) -> String {
     folder.trim_matches('/').to_string()
 }
@@ -812,7 +837,7 @@ mod tests {
     use super::{
         EditMode, TaskStatus, edit_args, empty_tasks_message, git_config_count,
         git_signing_env_vars, is_empty_tasks_error, mkdir_selector, normalize_folder,
-        task_command_args, tasks_command_args, tasks_scope,
+        task_command_args, tasks_command_args, tasks_scope, todo_command_args,
     };
 
     #[test]
@@ -872,6 +897,47 @@ mod tests {
     fn task_command_args_allow_omitted_task_number() {
         let args = task_command_args("undo", "example:42".to_string(), None);
         assert_eq!(args, vec!["undo".to_string(), "example:42".to_string()]);
+    }
+
+    #[test]
+    fn todo_command_args_include_tasks_and_tags() {
+        let args = todo_command_args(
+            "example",
+            "ship release",
+            &["draft notes".to_string(), "announce".to_string()],
+            &["mcp".to_string(), "#release".to_string()],
+            Some("todos/mcp"),
+        );
+        assert_eq!(
+            args,
+            vec![
+                "example:todo".to_string(),
+                "add".to_string(),
+                "todos/mcp/".to_string(),
+                "ship release".to_string(),
+                "--task".to_string(),
+                "draft notes".to_string(),
+                "--task".to_string(),
+                "announce".to_string(),
+                "--tags".to_string(),
+                "#mcp".to_string(),
+                "--tags".to_string(),
+                "#release".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn todo_command_args_allow_no_folder_or_tasks() {
+        let args = todo_command_args("example", "ship release", &[], &[], None);
+        assert_eq!(
+            args,
+            vec![
+                "example:todo".to_string(),
+                "add".to_string(),
+                "ship release".to_string(),
+            ]
+        );
     }
 
     #[test]

@@ -136,6 +136,9 @@ struct TodoArgs {
     /// Description of the todo item.
     #[serde(alias = "title")]
     description: String,
+    /// Optional checklist task titles to add to the todo.
+    #[serde(default)]
+    tasks: Vec<String>,
     /// Tags to apply (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
@@ -390,6 +393,7 @@ impl McpServer {
                 self.nb
                     .todo(
                         &args.description,
+                        &args.tasks,
                         &args.tags,
                         args.folder.as_deref(),
                         args.notebook.as_deref(),
@@ -515,6 +519,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "Invoke the nb tool with params: {\"command\":\"nb.<subcommand>\",\"args\":{...}}.",
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
+                "nb.todo supports optional tasks[] to create checklist items via repeated --task flags.",
                 "Compatibility aliases: note commands selector->id, nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
                 "nb.tasks is recursive by default; pass recursive:false to limit to the selected folder.",
                 "In nb.list output, todo state comes from [ ] / [x] in titles; leading glyphs like ✔️ are item-type markers from nb.",
@@ -530,7 +535,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
                 {"command": "nb.search", "description": "Full-text search notes"},
-                {"command": "nb.todo", "description": "Create a todo item"},
+                {"command": "nb.todo", "description": "Create a todo item (optional tasks[] checklist)"},
                 {"command": "nb.do", "description": "Mark a todo as complete (optional task_number)"},
                 {"command": "nb.undo", "description": "Reopen a completed todo (optional task_number)"},
                 {"command": "nb.tasks", "description": "List todo items recursively (optional status: open|closed)"},
@@ -582,7 +587,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.todo" => command_help(
             "nb.todo",
-            "Create a todo item",
+            "Create a todo item (optional tasks[] checklist)",
             json_schema_for::<TodoArgs>(),
         ),
         "nb.do" => command_help(
@@ -665,6 +670,16 @@ mod tests {
     fn todo_args_accept_title_alias() {
         let args = parse_args::<TodoArgs>(json!({"title": "follow up"})).unwrap();
         assert_eq!(args.description, "follow up");
+    }
+
+    #[test]
+    fn todo_args_accept_tasks_list() {
+        let args = parse_args::<TodoArgs>(json!({
+            "description": "follow up",
+            "tasks": ["first", "second"]
+        }))
+        .unwrap();
+        assert_eq!(args.tasks, vec!["first".to_string(), "second".to_string()]);
     }
 
     #[test]
