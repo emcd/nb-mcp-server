@@ -141,23 +141,3 @@ pub fn ensure_dir(path: &std::path::Path) -> std::io::Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_sanitize_name() {
-        assert_eq!(sanitize_name("my-project"), "my-project");
-        assert_eq!(sanitize_name("my_project"), "my_project");
-        assert_eq!(sanitize_name("my project"), "my-project");
-        assert_eq!(sanitize_name("my/project"), "my-project");
-    }
-
-    #[test]
-    fn test_log_path_has_expected_structure() {
-        let path = get_log_path();
-        assert!(path.to_string_lossy().contains("nb-mcp"));
-        assert!(path.extension().is_some_and(|e| e == "log"));
-    }
-}

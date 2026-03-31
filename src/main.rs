@@ -1,33 +1,6 @@
 use anyhow::Result;
+use nb_mcp_server::{Config, mcp, nb, paths};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
-
-mod git_signing;
-mod mcp;
-mod nb;
-mod paths;
-
-/// Command-line configuration for the MCP server.
-pub struct Config {
-    /// Default notebook (CLI --notebook overrides NB_MCP_NOTEBOOK env var).
-    pub notebook: Option<String>,
-    /// Disable commit and tag signing in the notebook repository.
-    pub commit_signing_disabled: bool,
-    /// Automatically create missing notebooks.
-    pub create_notebook: bool,
-    /// Show notebook and state paths, then exit.
-    pub show_paths: bool,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            notebook: None,
-            commit_signing_disabled: false,
-            create_notebook: true,
-            show_paths: false,
-        }
-    }
-}
 
 fn parse_args() -> Config {
     let mut config = Config::default();
