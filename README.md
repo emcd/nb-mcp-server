@@ -97,7 +97,7 @@ reduce the token footprint of the MCP server.
 | `nb.add` | Create a note | `title`, `content`, `tags[]`, `folder` |
 | `nb.show` | Read a note | `id` (alias: `selector`) |
 | `nb.edit` | Update a note | `id` (alias: `selector`), `content`, `mode` (`replace` default, `append`, `prepend`) |
-| `nb.delete` | Delete a note | `id` (alias: `selector`), `confirm: true` (required) |
+| `nb.delete` | Delete a note | `id` (alias: `selector`) |
 | `nb.move` | Move or rename a note | `id` (alias: `selector`), `destination` |
 | `nb.list` | List notes | `folder`, `tags[]`, `limit` |
 | `nb.search` | Full-text search | `query`, `tags[]` |

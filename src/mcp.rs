@@ -89,9 +89,6 @@ struct DeleteArgs {
     /// Note ID, filename, or title to delete.
     #[serde(alias = "selector")]
     id: String,
-    /// Must be true to confirm deletion.
-    #[serde(default)]
-    confirm: bool,
     /// Notebook containing the note (uses default if not specified).
     notebook: Option<String>,
 }
@@ -358,15 +355,6 @@ impl McpServer {
             }
             "delete" => {
                 let args: DeleteArgs = parse_args(call.args)?;
-                if !args.confirm {
-                    return Err(McpError::invalid_params(
-                        "delete requires confirm: true",
-                        Some(serde_json::json!({
-                            "hint": "Set confirm: true to delete the note.",
-                            "id": args.id,
-                        })),
-                    ));
-                }
                 self.nb.delete(&args.id, args.notebook.as_deref()).await
             }
             "move" => {
@@ -537,7 +525,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.add", "description": "Create a new note"},
                 {"command": "nb.show", "description": "Read a note's content"},
                 {"command": "nb.edit", "description": "Update a note's content (replace by default)"},
-                {"command": "nb.delete", "description": "Delete a note (requires confirm: true)"},
+                {"command": "nb.delete", "description": "Delete a note"},
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering"},
                 {"command": "nb.search", "description": "Full-text search notes"},
@@ -573,7 +561,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.delete" => command_help(
             "nb.delete",
-            "Delete a note (requires confirm: true)",
+            "Delete a note",
             json_schema_for::<DeleteArgs>(),
         ),
         "nb.move" => command_help(
@@ -711,9 +699,14 @@ mod tests {
 
     #[test]
     fn delete_args_accept_selector_alias() {
-        let args = parse_args::<DeleteArgs>(json!({"selector": "21", "confirm": true})).unwrap();
+        let args = parse_args::<DeleteArgs>(json!({"selector": "21"})).unwrap();
         assert_eq!(args.id, "21");
-        assert!(args.confirm);
+    }
+
+    #[test]
+    fn delete_args_ignore_legacy_confirm_field() {
+        let args = parse_args::<DeleteArgs>(json!({"id": "21", "confirm": false})).unwrap();
+        assert_eq!(args.id, "21");
     }
 
     #[test]
