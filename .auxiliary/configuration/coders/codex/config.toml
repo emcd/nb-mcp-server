@@ -24,6 +24,12 @@ use_legacy_landlock = true
 command = "npx"
 args = ["-y", "@upstash/context7-mcp"]
 
+[mcp_servers.context7.tools.resolve_library_id]
+approval_mode = "approve"
+
+[mcp_servers.context7.tools.query_docs]
+approval_mode = "approve"
+
 [mcp_servers.nb]
 command = "reloaderoo"
 args = [
@@ -36,3 +42,9 @@ args = [
   "nb-mcp-server",
   "--no-commit-signing",
 ]
+
+[mcp_servers.nb.tools.help]
+approval_mode = "approve"
+
+[mcp_servers.nb.tools.nb]
+approval_mode = "approve"
