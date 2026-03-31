@@ -607,7 +607,7 @@ impl NbClient {
     /// Creates a folder.
     pub async fn mkdir(&self, path: &str, notebook: Option<&str>) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
-        let folder_path = format!("{}:{}/", notebook, path);
+        let folder_path = mkdir_selector(&notebook, path);
         self.exec_vec(vec!["add".to_string(), "folder".to_string(), folder_path])
             .await
     }
@@ -712,6 +712,11 @@ fn normalize_folder(folder: &str) -> String {
     folder.trim_matches('/').to_string()
 }
 
+fn mkdir_selector(notebook: &str, path: &str) -> String {
+    let normalized = normalize_folder(path);
+    format!("{}:{}", notebook, normalized)
+}
+
 fn tasks_scope(notebook: &str, folder: Option<&str>) -> String {
     match folder {
         Some(path) if !path.is_empty() => format!("{}:{}/", notebook, path),
@@ -806,8 +811,8 @@ mod tests {
 
     use super::{
         EditMode, TaskStatus, edit_args, empty_tasks_message, git_config_count,
-        git_signing_env_vars, is_empty_tasks_error, normalize_folder, task_command_args,
-        tasks_command_args, tasks_scope,
+        git_signing_env_vars, is_empty_tasks_error, mkdir_selector, normalize_folder,
+        task_command_args, tasks_command_args, tasks_scope,
     };
 
     #[test]
@@ -899,6 +904,11 @@ mod tests {
     #[test]
     fn normalize_folder_trims_slashes() {
         assert_eq!(normalize_folder("/todos/mcp/"), "todos/mcp");
+    }
+
+    #[test]
+    fn mkdir_selector_drops_trailing_slash() {
+        assert_eq!(mkdir_selector("example", "docs/api/"), "example:docs/api");
     }
 
     #[test]
