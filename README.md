@@ -109,7 +109,7 @@ reduce the token footprint of the MCP server.
 | `nb.todo` | Create a todo | `description`, `tags[]` |
 | `nb.do` | Mark complete | `id` (alias: `selector`), optional `task_number` |
 | `nb.undo` | Reopen | `id` (alias: `selector`), optional `task_number` |
-| `nb.tasks` | List todos | optional `status` (`open` or `closed`) |
+| `nb.tasks` | List todos | optional `status` (`open` or `closed`), optional `recursive` (`true` default) |
 
 ### Organization
 

@@ -48,3 +48,6 @@ approval_mode = "approve"
 
 [mcp_servers.nb.tools.nb]
 approval_mode = "approve"
+
+[mcp_servers.nb.tools.restart_server]
+approval_mode = "approve"

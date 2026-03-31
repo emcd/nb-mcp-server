@@ -2,7 +2,7 @@
 //!
 //! Handles notebook qualification, escaping, and output parsing.
 
-use std::{path::PathBuf, process::Stdio, sync::LazyLock};
+use std::{collections::VecDeque, path::PathBuf, process::Stdio, sync::LazyLock};
 
 use regex::Regex;
 use schemars::JsonSchema;
@@ -470,14 +470,69 @@ impl NbClient {
         &self,
         folder: Option<&str>,
         status: Option<TaskStatus>,
+        recursive: bool,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
-        let scope = match folder {
-            Some(f) => format!("{}:{}/", notebook, f),
-            None => format!("{}:", notebook),
+        let folder = folder.map(normalize_folder);
+        let scopes = if recursive {
+            self.tasks_scopes_recursive(&notebook, folder.as_deref())
+                .await?
+        } else {
+            vec![tasks_scope(&notebook, folder.as_deref())]
         };
-        self.exec_vec(tasks_command_args(scope, status)).await
+
+        let mut outputs: Vec<String> = Vec::new();
+        let mut saw_empty = false;
+        for scope in scopes {
+            match self.exec_vec(tasks_command_args(scope, status)).await {
+                Ok(output) => {
+                    let output = output.trim();
+                    if !output.is_empty() {
+                        outputs.push(output.to_string());
+                    }
+                }
+                Err(NbError::CommandFailed(message)) if is_empty_tasks_error(&message) => {
+                    saw_empty = true;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        if outputs.is_empty() && saw_empty {
+            return Err(NbError::CommandFailed(empty_tasks_message(status)));
+        }
+        Ok(outputs.join("\n"))
+    }
+
+    async fn tasks_scopes_recursive(
+        &self,
+        notebook: &str,
+        folder: Option<&str>,
+    ) -> Result<Vec<String>, NbError> {
+        let notebook_root = self.notebook_path(Some(notebook)).await?;
+        let start = folder.unwrap_or_default().to_string();
+        let mut queue = VecDeque::new();
+        queue.push_back(start.clone());
+
+        let mut scopes = vec![tasks_scope(notebook, folder)];
+        while let Some(current) = queue.pop_front() {
+            let base = if current.is_empty() {
+                notebook_root.clone()
+            } else {
+                notebook_root.join(&current)
+            };
+            let children = child_folder_names(&base)?;
+            for child in children {
+                let next = if current.is_empty() {
+                    child
+                } else {
+                    format!("{}/{}", current, child)
+                };
+                scopes.push(tasks_scope(notebook, Some(&next)));
+                queue.push_back(next);
+            }
+        }
+        Ok(scopes)
     }
 
     /// Creates a bookmark.
@@ -653,6 +708,17 @@ fn task_command_args(action: &str, selector: String, task_number: Option<u32>) -
     args
 }
 
+fn normalize_folder(folder: &str) -> String {
+    folder.trim_matches('/').to_string()
+}
+
+fn tasks_scope(notebook: &str, folder: Option<&str>) -> String {
+    match folder {
+        Some(path) if !path.is_empty() => format!("{}:{}/", notebook, path),
+        _ => format!("{}:", notebook),
+    }
+}
+
 fn tasks_command_args(scope: String, status: Option<TaskStatus>) -> Vec<String> {
     let mut args = vec!["tasks".to_string(), scope];
     if let Some(filter) = status {
@@ -664,6 +730,47 @@ fn tasks_command_args(scope: String, status: Option<TaskStatus>) -> Vec<String> 
     }
     args.push("--no-color".to_string());
     args
+}
+
+fn is_empty_tasks_error(message: &str) -> bool {
+    message.trim_start().starts_with("! 0 ") && message.contains(" tasks.")
+}
+
+fn empty_tasks_message(status: Option<TaskStatus>) -> String {
+    match status {
+        Some(TaskStatus::Open) => "! 0 open tasks.".to_string(),
+        Some(TaskStatus::Closed) => "! 0 closed tasks.".to_string(),
+        None => "! 0 tasks.".to_string(),
+    }
+}
+
+fn child_folder_names(path: &std::path::Path) -> Result<Vec<String>, NbError> {
+    let read_dir = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(NbError::Io(err)),
+    };
+
+    let mut names = Vec::new();
+    for entry in read_dir {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(|value| value.to_string()) else {
+            continue;
+        };
+        if name.starts_with('.') {
+            continue;
+        }
+        let meta = match entry.metadata() {
+            Ok(meta) => meta,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => return Err(NbError::Io(err)),
+        };
+        if meta.is_dir() {
+            names.push(name);
+        }
+    }
+    names.sort();
+    Ok(names)
 }
 
 const GIT_SIGNING_OVERRIDES: [(&str, &str); 2] =
@@ -698,8 +805,9 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        EditMode, TaskStatus, edit_args, git_config_count, git_signing_env_vars, task_command_args,
-        tasks_command_args,
+        EditMode, TaskStatus, edit_args, empty_tasks_message, git_config_count,
+        git_signing_env_vars, is_empty_tasks_error, normalize_folder, task_command_args,
+        tasks_command_args, tasks_scope,
     };
 
     #[test]
@@ -786,6 +894,43 @@ mod tests {
                 "--no-color".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn normalize_folder_trims_slashes() {
+        assert_eq!(normalize_folder("/todos/mcp/"), "todos/mcp");
+    }
+
+    #[test]
+    fn tasks_scope_formats_root() {
+        assert_eq!(tasks_scope("example", None), "example:");
+    }
+
+    #[test]
+    fn tasks_scope_formats_folder() {
+        assert_eq!(
+            tasks_scope("example", Some("todos/mcp")),
+            "example:todos/mcp/"
+        );
+    }
+
+    #[test]
+    fn empty_tasks_error_detection_matches_nb_output() {
+        assert!(is_empty_tasks_error("! 0 open tasks."));
+        assert!(!is_empty_tasks_error("! notebook not found"));
+    }
+
+    #[test]
+    fn empty_tasks_message_follows_status_filter() {
+        assert_eq!(
+            empty_tasks_message(Some(TaskStatus::Open)),
+            "! 0 open tasks."
+        );
+        assert_eq!(
+            empty_tasks_message(Some(TaskStatus::Closed)),
+            "! 0 closed tasks."
+        );
+        assert_eq!(empty_tasks_message(None), "! 0 tasks.");
     }
 
     #[test]

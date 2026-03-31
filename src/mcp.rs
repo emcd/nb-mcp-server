@@ -160,15 +160,34 @@ struct TaskIdArgs {
     notebook: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 struct TasksArgs {
     /// Folder to list todos from (lists all if not specified).
     folder: Option<String>,
     /// Optional status filter (`open` or `closed`).
     #[serde(alias = "state")]
     status: Option<TaskStatus>,
+    /// Whether to include tasks from descendant folders.
+    /// Defaults to true; set false for folder-only scope.
+    #[serde(default = "default_true", alias = "recurse")]
+    recursive: bool,
     /// Notebook to list todos from (uses default if not specified).
     notebook: Option<String>,
+}
+
+impl Default for TasksArgs {
+    fn default() -> Self {
+        Self {
+            folder: None,
+            status: None,
+            recursive: true,
+            notebook: None,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -407,6 +426,7 @@ impl McpServer {
                     .tasks(
                         args.folder.as_deref(),
                         args.status,
+                        args.recursive,
                         args.notebook.as_deref(),
                     )
                     .await
@@ -508,6 +528,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
                 "Compatibility aliases: note commands selector->id, nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
+                "nb.tasks is recursive by default; pass recursive:false to limit to the selected folder.",
                 "Call help with query 'nb.<command>' for exact command schemas."
             ],
             "commands": [
@@ -523,7 +544,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.todo", "description": "Create a todo item"},
                 {"command": "nb.do", "description": "Mark a todo as complete (optional task_number)"},
                 {"command": "nb.undo", "description": "Reopen a completed todo (optional task_number)"},
-                {"command": "nb.tasks", "description": "List todo items (optional status: open|closed)"},
+                {"command": "nb.tasks", "description": "List todo items recursively (optional status: open|closed)"},
                 {"command": "nb.bookmark", "description": "Save a URL as a bookmark"},
                 {"command": "nb.folders", "description": "List folders in notebook"},
                 {"command": "nb.mkdir", "description": "Create a folder"},
@@ -587,7 +608,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.tasks" => command_help(
             "nb.tasks",
-            "List todo items (optional status: open|closed)",
+            "List todo items recursively (optional status: open|closed, set recursive:false for folder-only)",
             json_schema_for::<TasksArgs>(),
         ),
         "nb.bookmark" => command_help(
@@ -713,5 +734,17 @@ mod tests {
     fn tasks_args_accept_state_alias() {
         let args = parse_args::<TasksArgs>(json!({"state": "open"})).unwrap();
         assert_eq!(args.status, Some(TaskStatus::Open));
+    }
+
+    #[test]
+    fn tasks_args_default_recursive_true() {
+        let args = parse_args::<TasksArgs>(json!({})).unwrap();
+        assert!(args.recursive);
+    }
+
+    #[test]
+    fn tasks_args_accept_recurse_alias() {
+        let args = parse_args::<TasksArgs>(json!({"recurse": false})).unwrap();
+        assert!(!args.recursive);
     }
 }
