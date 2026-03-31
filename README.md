@@ -99,7 +99,7 @@ reduce the token footprint of the MCP server.
 | `nb.edit` | Update a note | `id` (alias: `selector`), `content`, `mode` (`replace` default, `append`, `prepend`) |
 | `nb.delete` | Delete a note | `id` (alias: `selector`) |
 | `nb.move` | Move or rename a note | `id` (alias: `selector`), `destination` |
-| `nb.list` | List notes | `folder`, `tags[]`, `limit` |
+| `nb.list` | List notes | `folder`, `tags[]`, `limit` (`[ ]` / `[x]` indicate todo status; leading glyphs are item markers) |
 | `nb.search` | Full-text search | `query`, `tags[]` |
 
 ### Todos

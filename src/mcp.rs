@@ -252,7 +252,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}}. This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector). Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
+        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}}. This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector). In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -517,6 +517,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
                 "Compatibility aliases: note commands selector->id, nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
                 "nb.tasks is recursive by default; pass recursive:false to limit to the selected folder.",
+                "In nb.list output, todo state comes from [ ] / [x] in titles; leading glyphs like ✔️ are item-type markers from nb.",
                 "Call help with query 'nb.<command>' for exact command schemas."
             ],
             "commands": [
@@ -527,7 +528,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.edit", "description": "Update a note's content (replace by default)"},
                 {"command": "nb.delete", "description": "Delete a note"},
                 {"command": "nb.move", "description": "Move or rename a note"},
-                {"command": "nb.list", "description": "List notes with optional filtering"},
+                {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
                 {"command": "nb.search", "description": "Full-text search notes"},
                 {"command": "nb.todo", "description": "Create a todo item"},
                 {"command": "nb.do", "description": "Mark a todo as complete (optional task_number)"},
@@ -571,7 +572,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.list" => command_help(
             "nb.list",
-            "List notes with optional filtering",
+            "List notes with optional filtering. Todo status is [ ] / [x] in titles; leading glyphs (for example ✔️) are item markers from nb.",
             json_schema_for::<ListArgs>(),
         ),
         "nb.search" => command_help(
