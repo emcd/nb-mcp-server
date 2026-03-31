@@ -1,16 +1,8 @@
 {
   "mcpServers": {
-    "rust-analyzer": {
-      "command": "mcp-language-server",
-      "args": ["--lsp", "rust-analyzer", "--workspace", "."]
-    },
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"]
-    },
-    "librovore": {
-      "command": "uvx",
-      "args": ["librovore", "serve"]
     }
   },
 
@@ -49,11 +41,7 @@
     "web_fetch",
     "web_search",
     "mcp__context7__resolve-library-id",
-    "mcp__context7__get-library-docs",
-    "mcp__rust-analyzer__definition",
-    "mcp__rust-analyzer__diagnostics",
-    "mcp__rust-analyzer__hover",
-    "mcp__rust-analyzer__references"
+    "mcp__context7__get-library-docs"
   ],
 
   "approvalMode": "auto-edit",

@@ -6,19 +6,23 @@ personality = "friendly"
 # sandbox_mode = "workspace-write"
 trust_level = "trusted"
 # web_search = "cached"
-[mcp_servers.rust-analyzer]
-command = "/bin/bash"
-args = ["-lc", "mcp-language-server --lsp rust-analyzer --workspace . 2>/dev/null"]
-startup_timeout_sec = 30
-tool_timeout_sec = 90
+
+[features]
+# Temporary Linux sandbox workaround while upstream resolves Bubblewrap regressions.
+# We first hit #14936 symptoms in 0.115.0:
+#   - frequent "retry without sandbox?" prompts
+#   - bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted
+# After host AppArmor tuning mitigated #14936, we then hit #14694-class
+# symlinked writable-root failures in our workflow:
+#   - bwrap: Can't create file at <workspace>/.codex: Is a directory
+# Use legacy Landlock for now; remove this once robust Bubblewrap fixes land.
+use_legacy_landlock = true
+
+## MCP Servers
 
 [mcp_servers.context7]
 command = "npx"
 args = ["-y", "@upstash/context7-mcp"]
-
-[mcp_servers.librovore]
-command = "uvx"
-args = ["librovore", "serve"]
 
 [mcp_servers.nb]
 command = "reloaderoo"

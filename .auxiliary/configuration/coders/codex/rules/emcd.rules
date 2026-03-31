@@ -8,7 +8,7 @@
 # Notes:
 # - Rules match an argv *prefix* (not globs). For example:
 #     pattern=["git", "diff"] matches "git diff --stat".
-# - We intentionally do NOT allow `git commit` or `git push` here.
+# - We intentionally do NOT allow `git push` here.
 
 # Common filesystem and text utilities.
 prefix_rule(pattern=["awk"], decision="allow")
@@ -34,9 +34,9 @@ prefix_rule(pattern=["which"], decision="allow")
 
 # Git commands used by normal development workflows.
 prefix_rule(
-    pattern=["git", ["add", "branch", "diff", "log", "show", "status"]],
+    pattern=["git", ["add", "branch", "commit", "diff", "log", "show", "status", "tag"]],
     decision="allow",
-    justification="Common git inspection/staging commands.",
+    justification="Common local git workflow commands.",
 )
 prefix_rule(
     pattern=["git", ["fetch", "rebase", "rev-parse"]],

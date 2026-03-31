@@ -47,29 +47,21 @@
     "build": {
       "mode": "primary",
       // "model": "zai-coding-plan/glm-4.7"
-      "model": "deepseek/deepseek-chat"
+      // "model": "deepseek/deepseek-chat"
+      "model": "minimax-coding-plan/MiniMax-M2.7"
     },
     "plan": {
       "mode": "primary",
       // "model": "zai-coding-plan/glm-4.7"
-      "model": "deepseek/deepseek-chat"
+      // "model": "deepseek/deepseek-chat"
+      "model": "minimax-coding-plan/MiniMax-M2.7"
     }
   },
 
   "mcp": {
-    "rust-analyzer": {
-      "type": "local",
-      "command": ["mcp-language-server", "--lsp", "rust-analyzer", "--workspace", "."],
-      "enabled": true
-    },
     "context7": {
       "type": "local",
       "command": ["npx", "-y", "@upstash/context7-mcp"],
-      "enabled": true
-    },
-    "librovore": {
-      "type": "local",
-      "command": ["uvx", "librovore", "serve"],
       "enabled": true
     },
     "nb": {

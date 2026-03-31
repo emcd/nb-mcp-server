@@ -5,7 +5,6 @@
 - Development Practices: @.auxiliary/instructions/
 
 - Use the 'context7' MCP server to retrieve up-to-date documentation for any SDKs or APIs.
-- Use the 'librovore' MCP server to search structured documentation sites with object inventories (Sphinx-based, compatible MkDocs with mkdocstrings). This bridges curated documentation (context7) and raw scraping (firecrawl).
 - Use the 'nb' MCP server for project note-taking, issue tracking, and collaboration. The server provides LLM-friendly access to the `nb` note-taking system with proper escaping and project-specific notebook context.
 - Check README files in directories you're working with for insights about architecture, constraints, and TODO items.
 
@@ -22,19 +21,23 @@ Before implementing code changes, consult these files in `.auxiliary/instruction
 - `practices-rust.rst` - Rust-specific patterns (error handling, trait design, module organization)
 - `nomenclature.rst` - Naming conventions for variables, functions, classes, exceptions
 - `style.rst` - Code formatting standards (spacing, line length, documentation mood)
-- `validation.rst` - Quality assurance requirements (linters, type checkers, tests)
 
 # Operation
 
 - Use `rg --line-number --column` to get precise coordinates for MCP tools that require line/column positions.
 - Choose appropriate editing tools based on the task complexity and your familiarity with the tools.
-- Use the 'rust-analyzer' MCP server where appropriate:
-    - `rename_symbol` for refactors
-    - `references` for precise symbol analysis
+- If instruction files mention multiple language ecosystems, prefer tools and commands that match the project's configured languages; ignore language-inapplicable tooling unless the user explicitly requests it.
+- Use a README-first discovery workflow to reduce token churn:
+  - Start at the repository root `README.{md,rst}`, then read the nearest relevant subtree README.
+  - After reading the nearest README, scope code searches to that subtree before considering repo-wide searches.
+  - If a touched subsystem README is stale after your change, update it in the same batch.
 - Batch related changes together when possible to maintain consistency.
 - Use relative paths rather than absolute paths when possible.
 - Do not write to paths outside the current project unless explicitly requested.
-- Use the `.auxiliary/scribbles` directory for scratch space instead of `/tmp`.
+- Use `.auxiliary/scribbles` for scratch work and one-off experiments instead of `/tmp`; use `.auxiliary/temporary` for ephemeral test state and build artifacts that are safe to delete.
+- In sandboxed environments (e.g., Codex CLI), treat file/network permission failures as escalation boundaries:
+  - If an operation fails due to sandbox, file access, or network restrictions, rerun it with user escalation.
+  - Do not spend time on retry loops or workaround exploration before escalating blocked operations.
 
 ## Note-Taking with `nb` MCP Server
 
@@ -67,22 +70,28 @@ Use consistent tags for discoverability:
 - Prefer a folder taxonomy of `<issue-type>/<component>` (max depth 2) and avoid mixing top-level component folders with top-level issue-type folders.
 - Recommended top-level issue types are:
     - `todos/`
-    - `handoffs/`
     - `coordination/`
     - `decisions/` (optional for durable rationale notes)
 - Example component names include `engine`, `mcp`, `tui`, `web`, `handbook`, and `data-models`.
 - This project should define and document its specific component-folder conventions in the **Project Notes** section.
 - For cross-component work, prefer `coordination/general` and use multiple `#component-*` tags.
+- For per-component rolling handoffs, prefer `coordination/<component>` (single continuously updated note) instead of creating history chains under `handoffs/*`.
 - Keep notebook lifecycle hygiene:
     - prune completed todos quickly,
-    - keep only active/near-term handoffs,
+    - keep only active/near-term coordination checkpoints,
     - delete stale history-only notes with no owner or action.
 
 ### `nb` vs OpenSpec Rubric
 - Use **OpenSpec proposals** for cross-cutting changes, contract-shaping work, architecture shifts, or work that needs explicit design discussion.
 - Use **`nb` todos/notes** for scoped, self-contained implementation tasks where the path is straightforward.
+- When in doubt about whether work needs an OpenSpec proposal or only `nb` execution tracking, prefer OpenSpec first for design clarity.
 - For each active OpenSpec proposal, keep **exactly one** linked `nb` todo as the tracking anchor (with proposal reference), rather than duplicating full task trees in both systems.
-- When in doubt, prefer OpenSpec first for design clarity, then track execution updates in the linked `nb` todo.
+- For cross-worktree or multi-agent review, draft OpenSpec proposal text in an `nb` note first so collaborators can review without local file access barriers; after review, move the approved draft into `openspec/**` files for human review and commit.
+- Keep rolling handoff notes separate from OpenSpec draft/proposal text.
+## Tests Development
+
+- Prefer tests under `tests/unit` and `tests/integration` over inline `#[cfg(test)]` modules in `src/**`, unless there is a strong locality reason to keep tests adjacent to implementation.
+- Prefer tests that exercise public interfaces; avoid source-inclusion patterns used only to reach private internals.
 
 ## OpenSpec Instructions
 

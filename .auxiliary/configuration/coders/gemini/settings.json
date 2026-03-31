@@ -7,15 +7,8 @@
     "core": [
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "mcp__librovore__query_content",
-      "mcp__librovore__query_inventory",
       "mcp__nb__nb",
       "mcp__nb__help",
-      "mcp__rust-analyzer__definition",
-      "mcp__rust-analyzer__diagnostics",
-      "mcp__rust-analyzer__hover",
-      "mcp__rust-analyzer__references",
-      "mcp__rust-analyzer__rename_symbol",
       "edit",
       "glob",
       "google_web_search",
@@ -32,15 +25,8 @@
     "allowed": [
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "mcp__librovore__query_content",
-      "mcp__librovore__query_inventory",
       "mcp__nb__nb",
       "mcp__nb__help",
-      "mcp__rust-analyzer__definition",
-      "mcp__rust-analyzer__diagnostics",
-      "mcp__rust-analyzer__hover",
-      "mcp__rust-analyzer__references",
-      "mcp__rust-analyzer__rename_symbol",
       "edit",
       "glob",
       "google_web_search",
@@ -104,18 +90,9 @@
     }
   },
   "mcpServers": {
-    "rust-analyzer": {
-      "command": "mcp-language-server",
-      "args": [ "--lsp", "rust-analyzer", "--workspace", "." ],
-      "excludeTools": [ "edit_file" ]
-    },
     "context7": {
       "command": "npx",
       "args": [ "-y", "@upstash/context7-mcp" ]
-    },
-    "librovore": {
-      "command": "uvx",
-      "args": [ "librovore", "serve" ]
     },
     "nb": {
       "command": "nb-mcp",
