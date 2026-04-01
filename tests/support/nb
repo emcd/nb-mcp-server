@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="${NB_SHIM_ROOT:?NB_SHIM_ROOT is required}"
+mkdir -p "${root}/notebooks"
+echo "$*" >> "${root}/calls.log"
+
+has_signing_overrides() {
+  local count="${GIT_CONFIG_COUNT:-0}"
+  local index key value
+  local commit_ok=0
+  local tag_ok=0
+  for (( index = 0; index < count; index++ )); do
+    key="$(printenv "GIT_CONFIG_KEY_${index}" || true)"
+    value="$(printenv "GIT_CONFIG_VALUE_${index}" || true)"
+    if [[ "${key}" == "commit.gpgsign" && "${value}" == "false" ]]; then
+      commit_ok=1
+    fi
+    if [[ "${key}" == "tag.gpgsign" && "${value}" == "false" ]]; then
+      tag_ok=1
+    fi
+  done
+  [[ "${commit_ok}" -eq 1 && "${tag_ok}" -eq 1 ]]
+}
+
+if [[ "${1:-}" == "notebooks" && "${2:-}" == "show" ]]; then
+  notebook="${3:-}"
+  path="${root}/notebooks/${notebook}"
+  if [[ -d "${path}" ]]; then
+    echo "${path}"
+    exit 0
+  fi
+  echo "! notebook not found: ${notebook}" >&2
+  exit 1
+fi
+
+if [[ "${1:-}" == "notebooks" && "${2:-}" == "add" ]]; then
+  notebook="${3:-}"
+  if ! has_signing_overrides; then
+    echo "signing required: passphrase prompt would appear" >&2
+    exit 1
+  fi
+  mkdir -p "${root}/notebooks/${notebook}"
+  touch "${root}/signing-overrides-detected"
+  echo "Added notebook ${notebook}"
+  exit 0
+fi
+
+echo "unsupported nb command: $*" >&2
+exit 2
