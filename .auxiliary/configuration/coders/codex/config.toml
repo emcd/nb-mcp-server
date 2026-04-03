@@ -20,14 +20,29 @@ use_legacy_landlock = true
 
 ## MCP Servers
 
+[mcp_servers.agentmux]
+command = "agentmux"
+args = ["host", "mcp", "--bundle", "infrastructure"]
+startup_timeout_sec = 60
+tool_timeout_sec = 900
+
+[mcp_servers.agentmux.tools.list]
+approval_mode = "approve"
+
+[mcp_servers.agentmux.tools.look]
+approval_mode = "approve"
+
+[mcp_servers.agentmux.tools.send]
+approval_mode = "approve"
+
 [mcp_servers.context7]
 command = "npx"
 args = ["-y", "@upstash/context7-mcp"]
 
-[mcp_servers.context7.tools.resolve_library_id]
+[mcp_servers.context7.tools.query_docs]
 approval_mode = "approve"
 
-[mcp_servers.context7.tools.query_docs]
+[mcp_servers.context7.tools.resolve_library_id]
 approval_mode = "approve"
 
 [mcp_servers.nb]

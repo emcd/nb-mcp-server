@@ -1,5 +1,12 @@
 {
   "mcpServers": {
+    "agentmux": {
+      "command": "agentmux",
+      "args": [
+        "host", "mcp",
+        "--bundle", "infrastructure"
+      ]
+    },
     "context7": {
       "command": "npx",
       "args": [ "-y", "@upstash/context7-mcp" ]

@@ -25,10 +25,13 @@
   },
   "permissions": {
     "auto_allow": [
+      "mcp__agentmux__list",
+      "mcp__agentmux__look",
+      "mcp__agentmux__send",
       "mcp__context7__get-library-docs",
       "mcp__context7__resolve-library-id",
-      "mcp__nb__nb",
       "mcp__nb__help",
+      "mcp__nb__nb",
       "Bash(cargo build *)",
       "Bash(cargo check *)",
       "Bash(cargo clippy *)",

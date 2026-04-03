@@ -1,5 +1,5 @@
 # Changes here will be overwritten by Copier
-_commit: v1.0a9-7-g1b29337
+_commit: v1.0a10-1-gee4eb93
 _src_path: gh:emcd/agents-common
 coders:
 - claude
@@ -14,6 +14,7 @@ instructions_sources:
 instructions_target: .auxiliary/instructions
 languages:
 - rust
+project_bundle_name: infrastructure
 project_name: nb-mcp-server
 provide_instructions: true
 support_local_models: true
