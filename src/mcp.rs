@@ -27,6 +27,7 @@ struct NbCall {
     /// Subcommand to execute (e.g., "status", "add", "list").
     command: String,
     /// Arguments for the subcommand as a JSON object.
+    #[schemars(with = "std::collections::BTreeMap<String, serde_json::Value>")]
     #[serde(default)]
     args: serde_json::Value,
 }
@@ -258,7 +259,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}}. This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector). In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
+        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}} and pass args as a JSON object (stringified JSON is not accepted). This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector). In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -491,23 +492,25 @@ impl McpServer {
 fn parse_args<T: serde::de::DeserializeOwned + Default>(
     value: serde_json::Value,
 ) -> Result<T, McpError> {
-    // Handle empty/null args by using defaults
-    if value.is_null() || (value.is_object() && value.as_object().unwrap().is_empty()) {
+    if value.is_null() {
         return Ok(T::default());
     }
-
-    // Handle string-encoded JSON (some clients send args as string)
     let value = match value {
-        serde_json::Value::String(raw) => serde_json::from_str(&raw).map_err(|err| {
-            McpError::invalid_params(
+        serde_json::Value::Object(map) => {
+            if map.is_empty() {
+                return Ok(T::default());
+            }
+            serde_json::Value::Object(map)
+        }
+        other => {
+            return Err(McpError::invalid_params(
                 "invalid args for command",
                 Some(serde_json::json!({
-                    "error": format!("args was a string but did not parse as JSON: {}", err),
-                    "hint": "Pass args as a JSON object.",
+                    "error": format!("args must be a JSON object, got {}", json_type_name(&other)),
+                    "hint": "Pass args as a JSON object (not a stringified JSON payload).",
                 })),
-            )
-        })?,
-        other => other,
+            ));
+        }
     };
 
     serde_json::from_value::<T>(value).map_err(|err| {
@@ -521,6 +524,17 @@ fn parse_args<T: serde::de::DeserializeOwned + Default>(
     })
 }
 
+fn json_type_name(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
 fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
     let query = params.query.trim();
 
@@ -530,6 +544,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "shape_hints": [
                 "Invoke the nb tool with params: {\"command\":\"nb.<subcommand>\",\"args\":{...}}.",
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
+                "args must be a JSON object; stringified JSON args are rejected.",
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
                 "nb.search takes queries[] (required, non-empty), plus mode: any (default OR) or all (AND).",
                 "nb.todo supports optional tasks[] to create checklist items via repeated --task flags.",
@@ -668,4 +683,48 @@ fn command_help(command: &str, description: &str, schema: serde_json::Value) -> 
 
 fn json_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(T)).unwrap_or(serde_json::Value::Null)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_args;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+    struct ExampleArgs {
+        #[serde(default)]
+        value: String,
+    }
+
+    #[test]
+    fn parse_args_accepts_object_payloads() {
+        let parsed = parse_args::<ExampleArgs>(json!({"value": "ok"})).unwrap();
+        assert_eq!(
+            parsed,
+            ExampleArgs {
+                value: "ok".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_args_defaults_from_null_or_empty_object() {
+        assert_eq!(
+            parse_args::<ExampleArgs>(serde_json::Value::Null).unwrap(),
+            ExampleArgs::default()
+        );
+        assert_eq!(
+            parse_args::<ExampleArgs>(json!({})).unwrap(),
+            ExampleArgs::default()
+        );
+    }
+
+    #[test]
+    fn parse_args_rejects_non_object_payloads() {
+        assert!(parse_args::<ExampleArgs>(json!("{\"value\":\"ok\"}")).is_err());
+        assert!(parse_args::<ExampleArgs>(json!(["ok"])).is_err());
+        assert!(parse_args::<ExampleArgs>(json!(42)).is_err());
+        assert!(parse_args::<ExampleArgs>(json!(true)).is_err());
+    }
 }

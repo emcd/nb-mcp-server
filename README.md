@@ -89,6 +89,7 @@ Add to your MCP client configuration (e.g., `.mcp.json`):
 
 All commands are accessed via the `nb` tool with a `command` parameter to
 reduce the token footprint of the MCP server.
+The `args` field must be a JSON object. Stringified JSON payloads are rejected.
 
 ### Notes
 
