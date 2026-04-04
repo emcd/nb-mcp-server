@@ -324,9 +324,21 @@ pub async fn run(config: Config) -> Result<()> {
 
 impl McpServer {
     async fn dispatch_nb(&self, call: NbCall) -> Result<CallToolResult, McpError> {
+        macro_rules! parse_or_return {
+            ($ty:ty, $value:expr) => {
+                match parse_args::<$ty>($value) {
+                    Ok(args) => args,
+                    Err(message) => return Ok(tool_error(message)),
+                }
+            };
+        }
+
         let command = call.command.trim();
         if command.is_empty() {
-            return Err(McpError::invalid_params("command must be non-empty", None));
+            return Ok(tool_error(
+                "Invalid command: command must be non-empty.\n\
+                 Hint: call help with query 'nb' to list available commands.",
+            ));
         }
 
         // Strip "nb." prefix if present.
@@ -334,12 +346,12 @@ impl McpServer {
 
         let result = match subcommand {
             "status" => {
-                let args: StatusArgs = parse_args(call.args)?;
+                let args: StatusArgs = parse_or_return!(StatusArgs, call.args);
                 self.nb.status(args.notebook.as_deref()).await
             }
             "notebooks" => self.nb.notebooks().await,
             "add" => {
-                let args: AddArgs = parse_args(call.args)?;
+                let args: AddArgs = parse_or_return!(AddArgs, call.args);
                 self.nb
                     .add(
                         args.title.as_deref(),
@@ -351,27 +363,27 @@ impl McpServer {
                     .await
             }
             "show" => {
-                let args: ShowArgs = parse_args(call.args)?;
+                let args: ShowArgs = parse_or_return!(ShowArgs, call.args);
                 self.nb.show(&args.id, args.notebook.as_deref()).await
             }
             "edit" => {
-                let args: EditArgs = parse_args(call.args)?;
+                let args: EditArgs = parse_or_return!(EditArgs, call.args);
                 self.nb
                     .edit(&args.id, &args.content, args.mode, args.notebook.as_deref())
                     .await
             }
             "delete" => {
-                let args: DeleteArgs = parse_args(call.args)?;
+                let args: DeleteArgs = parse_or_return!(DeleteArgs, call.args);
                 self.nb.delete(&args.id, args.notebook.as_deref()).await
             }
             "move" => {
-                let args: MoveArgs = parse_args(call.args)?;
+                let args: MoveArgs = parse_or_return!(MoveArgs, call.args);
                 self.nb
                     .move_note(&args.id, &args.destination, args.notebook.as_deref())
                     .await
             }
             "list" => {
-                let args: ListArgs = parse_args(call.args)?;
+                let args: ListArgs = parse_or_return!(ListArgs, call.args);
                 self.nb
                     .list(
                         args.folder.as_deref(),
@@ -382,13 +394,12 @@ impl McpServer {
                     .await
             }
             "search" => {
-                let args: SearchArgs = parse_args(call.args)?;
+                let args: SearchArgs = parse_or_return!(SearchArgs, call.args);
                 if args.queries.is_empty() {
-                    return Err(McpError::invalid_params(
-                        "queries must be a non-empty array",
-                        Some(serde_json::json!({
-                            "hint": "Pass args.queries as an array of one or more strings.",
-                        })),
+                    return Ok(tool_error(
+                        "Invalid args for nb.search.\n\
+                         Reason: queries must be a non-empty array.\n\
+                         Hint: pass args.queries as an array of one or more strings.",
                     ));
                 }
                 self.nb
@@ -402,7 +413,7 @@ impl McpServer {
                     .await
             }
             "todo" => {
-                let args: TodoArgs = parse_args(call.args)?;
+                let args: TodoArgs = parse_or_return!(TodoArgs, call.args);
                 self.nb
                     .todo(
                         &args.description,
@@ -414,19 +425,19 @@ impl McpServer {
                     .await
             }
             "do" => {
-                let args: TaskIdArgs = parse_args(call.args)?;
+                let args: TaskIdArgs = parse_or_return!(TaskIdArgs, call.args);
                 self.nb
                     .do_task(&args.id, args.task_number, args.notebook.as_deref())
                     .await
             }
             "undo" => {
-                let args: TaskIdArgs = parse_args(call.args)?;
+                let args: TaskIdArgs = parse_or_return!(TaskIdArgs, call.args);
                 self.nb
                     .undo_task(&args.id, args.task_number, args.notebook.as_deref())
                     .await
             }
             "tasks" => {
-                let args: TasksArgs = parse_args(call.args)?;
+                let args: TasksArgs = parse_or_return!(TasksArgs, call.args);
                 self.nb
                     .tasks(
                         args.folder.as_deref(),
@@ -437,7 +448,7 @@ impl McpServer {
                     .await
             }
             "bookmark" => {
-                let args: BookmarkArgs = parse_args(call.args)?;
+                let args: BookmarkArgs = parse_or_return!(BookmarkArgs, call.args);
                 self.nb
                     .bookmark(
                         &args.url,
@@ -450,17 +461,17 @@ impl McpServer {
                     .await
             }
             "folders" => {
-                let args: FoldersArgs = parse_args(call.args)?;
+                let args: FoldersArgs = parse_or_return!(FoldersArgs, call.args);
                 self.nb
                     .folders(args.parent.as_deref(), args.notebook.as_deref())
                     .await
             }
             "mkdir" => {
-                let args: MkdirArgs = parse_args(call.args)?;
+                let args: MkdirArgs = parse_or_return!(MkdirArgs, call.args);
                 self.nb.mkdir(&args.path, args.notebook.as_deref()).await
             }
             "import" => {
-                let args: ImportArgs = parse_args(call.args)?;
+                let args: ImportArgs = parse_or_return!(ImportArgs, call.args);
                 self.nb
                     .import(
                         &args.source,
@@ -472,13 +483,10 @@ impl McpServer {
                     .await
             }
             _ => {
-                return Err(McpError::invalid_params(
-                    "unknown subcommand",
-                    Some(serde_json::json!({
-                        "command": command,
-                        "hint": "Call `help` with query 'nb' for available commands.",
-                    })),
-                ));
+                return Ok(tool_error(format!(
+                    "Unknown subcommand: {command}.\n\
+                     Hint: call help with query 'nb' for available commands."
+                )));
             }
         };
 
@@ -491,7 +499,7 @@ impl McpServer {
 
 fn parse_args<T: serde::de::DeserializeOwned + Default>(
     value: serde_json::Value,
-) -> Result<T, McpError> {
+) -> Result<T, String> {
     if value.is_null() {
         return Ok(T::default());
     }
@@ -503,25 +511,27 @@ fn parse_args<T: serde::de::DeserializeOwned + Default>(
             serde_json::Value::Object(map)
         }
         other => {
-            return Err(McpError::invalid_params(
-                "invalid args for command",
-                Some(serde_json::json!({
-                    "error": format!("args must be a JSON object, got {}", json_type_name(&other)),
-                    "hint": "Pass args as a JSON object (not a stringified JSON payload).",
-                })),
+            return Err(format!(
+                "Invalid args for command.\n\
+                 Reason: args must be a JSON object, got {}.\n\
+                 Hint: pass args as a JSON object (not a stringified JSON payload).",
+                json_type_name(&other)
             ));
         }
     };
 
     serde_json::from_value::<T>(value).map_err(|err| {
-        McpError::invalid_params(
-            "invalid args for command",
-            Some(serde_json::json!({
-                "error": err.to_string(),
-                "hint": "Check the required fields using the help tool.",
-            })),
+        format!(
+            "Invalid args for command.\n\
+             Reason: {}.\n\
+             Hint: check required fields with help query 'nb.<command>'.",
+            err
         )
     })
+}
+
+fn tool_error(message: impl Into<String>) -> CallToolResult {
+    CallToolResult::error(vec![Content::text(message.into())])
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
