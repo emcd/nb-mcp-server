@@ -201,6 +201,7 @@ jobs:
     needs: [initialize, build-binaries, build-mcpb]
     runs-on: ubuntu-latest
     permissions:
+      artifact-metadata: write
       attestations: write
       contents: write
       id-token: write
@@ -230,7 +231,7 @@ jobs:
           sha256sum nb-mcp-* *.mcpb >SHA256SUMS.txt
 
       - name: Attest Build Provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest@v4
         with:
           subject-path: |
             artifacts/SHA256SUMS.txt
