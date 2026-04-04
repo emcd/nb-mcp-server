@@ -100,7 +100,7 @@ reduce the token footprint of the MCP server.
 | `nb.delete` | Delete a note | `id` (alias: `selector`) |
 | `nb.move` | Move or rename a note | `id` (alias: `selector`), `destination` |
 | `nb.list` | List notes | `folder`, `tags[]`, `limit` (`[ ]` / `[x]` indicate todo status; leading glyphs are item markers) |
-| `nb.search` | Full-text search | `query`, `tags[]` |
+| `nb.search` | Full-text search | `queries[]` (required), `mode` (`any` default, `all`), `tags[]` |
 
 ### Todos
 
@@ -144,7 +144,8 @@ Search for notes:
 {
   "command": "nb.search",
   "args": {
-    "query": "API",
+    "queries": ["API", "design"],
+    "mode": "any",
     "tags": ["design"]
   }
 }

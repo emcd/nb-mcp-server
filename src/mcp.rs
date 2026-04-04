@@ -13,7 +13,7 @@ use tracing::{info, warn};
 
 use crate::Config;
 use crate::git_signing;
-use crate::nb::{EditMode, NbClient, TaskStatus};
+use crate::nb::{EditMode, NbClient, SearchMode, TaskStatus};
 
 #[derive(Clone)]
 struct McpServer {
@@ -120,8 +120,11 @@ struct ListArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct SearchArgs {
-    /// Search query (supports regex).
-    query: String,
+    /// Search terms/patterns (supports regex). Provide one or more terms.
+    queries: Vec<String>,
+    /// Search mode: `any` (default, OR) or `all` (AND).
+    #[serde(default)]
+    mode: SearchMode,
     /// Filter by tags (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
@@ -255,7 +258,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}}. This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector). In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
+        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}}. This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector). In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -379,9 +382,18 @@ impl McpServer {
             }
             "search" => {
                 let args: SearchArgs = parse_args(call.args)?;
+                if args.queries.is_empty() {
+                    return Err(McpError::invalid_params(
+                        "queries must be a non-empty array",
+                        Some(serde_json::json!({
+                            "hint": "Pass args.queries as an array of one or more strings.",
+                        })),
+                    ));
+                }
                 self.nb
                     .search(
-                        &args.query,
+                        &args.queries,
+                        args.mode,
                         &args.tags,
                         args.folder.as_deref(),
                         args.notebook.as_deref(),
@@ -519,6 +531,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "Invoke the nb tool with params: {\"command\":\"nb.<subcommand>\",\"args\":{...}}.",
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
+                "nb.search takes queries[] (required, non-empty), plus mode: any (default OR) or all (AND).",
                 "nb.todo supports optional tasks[] to create checklist items via repeated --task flags.",
                 "Compatibility aliases: note commands selector->id, nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
                 "nb.tasks is recursive by default; pass recursive:false to limit to the selected folder.",
@@ -534,7 +547,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.delete", "description": "Delete a note"},
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
-                {"command": "nb.search", "description": "Full-text search notes"},
+                {"command": "nb.search", "description": "Full-text search notes (queries[] + mode any|all)"},
                 {"command": "nb.todo", "description": "Create a todo item (optional tasks[] checklist)"},
                 {"command": "nb.do", "description": "Mark a todo as complete (optional task_number)"},
                 {"command": "nb.undo", "description": "Reopen a completed todo (optional task_number)"},
@@ -582,7 +595,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.search" => command_help(
             "nb.search",
-            "Full-text search notes",
+            "Full-text search notes (queries[] required; mode:any default OR, mode:all for AND)",
             json_schema_for::<SearchArgs>(),
         ),
         "nb.todo" => command_help(

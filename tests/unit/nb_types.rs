@@ -1,4 +1,4 @@
-use nb_mcp_server::nb::{EditMode, TaskStatus};
+use nb_mcp_server::nb::{EditMode, SearchMode, TaskStatus};
 
 #[test]
 fn edit_mode_deserializes_lowercase_values() {
@@ -16,4 +16,12 @@ fn task_status_deserializes_lowercase_values() {
     assert_eq!(status, TaskStatus::Open);
     let status: TaskStatus = serde_json::from_str("\"closed\"").unwrap();
     assert_eq!(status, TaskStatus::Closed);
+}
+
+#[test]
+fn search_mode_deserializes_lowercase_values() {
+    let mode: SearchMode = serde_json::from_str("\"any\"").unwrap();
+    assert_eq!(mode, SearchMode::Any);
+    let mode: SearchMode = serde_json::from_str("\"all\"").unwrap();
+    assert_eq!(mode, SearchMode::All);
 }

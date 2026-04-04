@@ -62,6 +62,17 @@ pub enum EditMode {
     Prepend,
 }
 
+/// Matching mode for `nb search` query terms.
+#[derive(Debug, Clone, Copy, Default, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchMode {
+    /// Match any query term (`OR` semantics).
+    #[default]
+    Any,
+    /// Require all query terms (`AND` semantics).
+    All,
+}
+
 /// Status filter for `nb tasks`.
 #[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -326,37 +337,24 @@ impl NbClient {
     /// Searches notes.
     pub async fn search(
         &self,
-        query: &str,
+        queries: &[String],
+        mode: SearchMode,
         tags: &[String],
         folder: Option<&str>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let mut args = vec!["search".to_string()];
+        if queries.is_empty() {
+            return Err(NbError::CommandFailed(
+                "at least one search query is required".to_string(),
+            ));
+        }
 
         let notebook = self.resolve_notebook(notebook).await?;
         let scope = match folder {
             Some(f) => format!("{}:{}/", notebook, f),
             None => format!("{}:", notebook),
         };
-        args.push(scope);
-
-        // Query
-        args.push(query.to_string());
-
-        // Tags
-        for tag in tags {
-            args.push("--tag".to_string());
-            let tag_str = if tag.starts_with('#') {
-                tag.clone()
-            } else {
-                format!("#{}", tag)
-            };
-            args.push(tag_str);
-        }
-
-        // No color
-        args.push("--no-color".to_string());
-
+        let args = search_command_args(scope, queries, mode, tags);
         self.exec_vec(args).await
     }
 
@@ -757,6 +755,38 @@ fn tasks_command_args(scope: String, status: Option<TaskStatus>) -> Vec<String> 
             TaskStatus::Closed => "closed",
         };
         args.push(status.to_string());
+    }
+    args.push("--no-color".to_string());
+    args
+}
+
+fn search_command_args(
+    scope: String,
+    queries: &[String],
+    mode: SearchMode,
+    tags: &[String],
+) -> Vec<String> {
+    let mut args = vec!["search".to_string(), scope];
+    let mut terms = queries.iter();
+    if let Some(first) = terms.next() {
+        args.push(first.to_string());
+    }
+    match mode {
+        SearchMode::Any => {
+            for query in terms {
+                args.push("--or".to_string());
+                args.push(query.to_string());
+            }
+        }
+        SearchMode::All => {
+            for query in terms {
+                args.push(query.to_string());
+            }
+        }
+    }
+    for tag in tags {
+        args.push("--tag".to_string());
+        args.push(normalize_tag(tag));
     }
     args.push("--no-color".to_string());
     args
