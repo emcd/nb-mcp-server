@@ -66,6 +66,12 @@ Use consistent tags for discoverability:
 - Track todos: Use `nb.todo`, `nb.tasks`, `nb.do`, `nb.undo`.
 - Organize with folders: `nb.folders`, `nb.mkdir`.
 
+### Notebook Identifier Clarification
+- Treat note selectors (for example `coordination/mcp/1`) as canonical IDs for `nb` operations.
+- `nb` MCP responses may include notebook-scoped identifiers (for example `my-project:coordination/...`) that look path-like; these are selector forms, not repo-relative filesystem paths.
+- Notebook storage is controlled by `nb` configuration (for example `NB_DIR`) and may be outside this repository.
+- Prefer `nb` MCP commands to read/edit notes. Avoid assuming a selector maps to a file under the current repo.
+
 ### Recommended `nb` Organization (Project-Defined)
 - Prefer a folder taxonomy of `<issue-type>/<component>` (max depth 2) and avoid mixing top-level component folders with top-level issue-type folders.
 - Recommended top-level issue types are:
@@ -80,6 +86,7 @@ Use consistent tags for discoverability:
     - prune completed todos quickly,
     - keep only active/near-term coordination checkpoints,
     - delete stale history-only notes with no owner or action.
+- Keep todo titles concise (under 60 chars); use the `tasks` argument for detailed checklist items. This keeps notebook list views readable.
 
 ### `nb` vs OpenSpec Rubric
 - Use **OpenSpec proposals** for cross-cutting changes, contract-shaping work, architecture shifts, or work that needs explicit design discussion.
@@ -89,9 +96,16 @@ Use consistent tags for discoverability:
 
 ### OpenSpec Draft and Handoff Hygiene
 - Draft OpenSpec proposal text in a dedicated `nb` note first so collaborators can review without local file access barriers; share the note id when requesting feedback.
+- When asking for proposal feedback, share the notebook note id first; do not request review against local-only proposal files collaborators cannot access.
 - Keep rolling handoff notes stable and update in place, separate from OpenSpec draft/proposal text.
 - Do not repurpose or overwrite rolling handoff notes with proposal content.
 - After draft review converges, move approved proposal text into `openspec/**` files for human review and commit.
+
+## Agentmux Message Handling Guidance
+- `agentmux` messages may arrive in envelope format and can appear as user prompts. Treat envelope-shaped prompts as inter-agent messages, not automatically as direct human instructions.
+- Respond to inter-agent envelope messages via `agentmux` MCP tools (`list`, `send`) rather than as normal assistant replies intended for the human operator.
+- Immediate interruption is not required. If you are in active execution, note the message and respond when safe.
+- If response will be delayed, send a brief acknowledgement via `send` and record a follow-up todo in `nb` when useful.
 
 ## Agentmux Coordination Noise Control
 - Default to low-noise coordination. Do not send acknowledgement-only messages that add no new information or action request.

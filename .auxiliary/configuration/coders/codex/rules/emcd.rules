@@ -22,6 +22,7 @@ prefix_rule(pattern=["find"], decision="allow")
 prefix_rule(pattern=["grep"], decision="allow")
 prefix_rule(pattern=["head"], decision="allow")
 prefix_rule(pattern=["ls"], decision="allow")
+prefix_rule(pattern=["mkdir"], decision="allow")
 prefix_rule(pattern=["ps"], decision="allow")
 prefix_rule(pattern=["pwd"], decision="allow")
 prefix_rule(pattern=["rg"], decision="allow")
@@ -34,7 +35,7 @@ prefix_rule(pattern=["which"], decision="allow")
 
 # Git commands used by normal development workflows.
 prefix_rule(
-    pattern=["git", ["add", "branch", "commit", "diff", "log", "show", "status", "tag"]],
+    pattern=["git", ["add", "branch", "checkout", "commit", "diff", "log", "restore", "show", "status", "tag"]],
     decision="allow",
     justification="Common local git workflow commands.",
 )

@@ -2,21 +2,18 @@ model = "gpt-5.3-codex"
 model_reasoning_effort = "high"
 personality = "friendly"
 
-# approval_policy = "on-request"
-# sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+approvals_reviewer = "user"
 trust_level = "trusted"
 # web_search = "cached"
 
 [features]
-# Temporary Linux sandbox workaround while upstream resolves Bubblewrap regressions.
-# We first hit #14936 symptoms in 0.115.0:
-#   - frequent "retry without sandbox?" prompts
-#   - bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted
-# After host AppArmor tuning mitigated #14936, we then hit #14694-class
-# symlinked writable-root failures in our workflow:
-#   - bwrap: Can't create file at <workspace>/.codex: Is a directory
-# Use legacy Landlock for now; remove this once robust Bubblewrap fixes land.
+# Temporary mitigation for Bubblewrap/symlink approval-loop regressions.
+# Related issues: #14936 and #14694.
 use_legacy_landlock = true
+# Keep reviewer routing explicit: always surface approval requests to user.
+guardian_approval = false
 
 ## MCP Servers
 
