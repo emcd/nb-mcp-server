@@ -90,6 +90,9 @@ Add to your MCP client configuration (e.g., `.mcp.json`):
 All commands are accessed via the `nb` tool with a `command` parameter to
 reduce the token footprint of the MCP server.
 The `args` field must be a JSON object. Stringified JSON payloads are rejected.
+Returned identifiers such as `coordination/mcp/1` or
+`myproject:coordination/mcp/1` are `nb` selectors, not filesystem paths in the
+current repository. Notebook storage is managed by `nb` configuration.
 
 ### Notes
 
@@ -107,7 +110,7 @@ The `args` field must be a JSON object. Stringified JSON payloads are rejected.
 
 | Command | Description | Key Arguments |
 |---------|-------------|---------------|
-| `nb.todo` | Create a todo | `description`, optional `tasks[]`, `tags[]` |
+| `nb.todo` | Create a todo | `title`, optional `description` (alias: `content`), optional `tasks[]`, `tags[]` |
 | `nb.do` | Mark complete | `id` (alias: `selector`), optional `task_number` |
 | `nb.undo` | Reopen | `id` (alias: `selector`), optional `task_number` |
 | `nb.tasks` | List todos | optional `status` (`open` or `closed`), optional `recursive` (`true` default) |

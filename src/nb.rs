@@ -400,7 +400,8 @@ impl NbClient {
     /// Creates a todo item.
     pub async fn todo(
         &self,
-        description: &str,
+        title: &str,
+        description: Option<&str>,
         tasks: &[String],
         tags: &[String],
         folder: Option<&str>,
@@ -409,6 +410,7 @@ impl NbClient {
         let notebook = self.resolve_notebook(notebook).await?;
         self.exec_vec(todo_command_args(
             &notebook,
+            title,
             description,
             tasks,
             tags,
@@ -688,19 +690,25 @@ fn task_command_args(action: &str, selector: String, task_number: Option<u32>) -
 
 fn todo_command_args(
     notebook: &str,
-    description: &str,
+    title: &str,
+    description: Option<&str>,
     tasks: &[String],
     tags: &[String],
     folder: Option<&str>,
 ) -> Vec<String> {
     let mut args = vec![format!("{notebook}:todo"), "add".to_string()];
 
-    // Folder path comes as a positional argument before the description.
+    // Folder path comes as a positional argument before the title.
     if let Some(folder) = folder {
         args.push(folder_scope(folder));
     }
 
-    args.push(description.to_string());
+    args.push(title.to_string());
+
+    if let Some(description) = description {
+        args.push("--description".to_string());
+        args.push(description.to_string());
+    }
 
     for task in tasks {
         args.push("--task".to_string());

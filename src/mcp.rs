@@ -62,7 +62,7 @@ struct AddArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct ShowArgs {
-    /// Note ID, filename, or title to show.
+    /// Notebook selector, note ID, filename, or title to show; not a filesystem path.
     #[serde(alias = "selector")]
     id: String,
     /// Notebook to read from (uses default if not specified).
@@ -71,7 +71,7 @@ struct ShowArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct EditArgs {
-    /// Note ID, filename, or title to edit.
+    /// Notebook selector, note ID, filename, or title to edit; not a filesystem path.
     #[serde(alias = "selector")]
     id: String,
     /// New content for the note.
@@ -85,7 +85,7 @@ struct EditArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct DeleteArgs {
-    /// Note ID, filename, or title to delete.
+    /// Notebook selector, note ID, filename, or title to delete; not a filesystem path.
     #[serde(alias = "selector")]
     id: String,
     /// Notebook containing the note (uses default if not specified).
@@ -94,7 +94,7 @@ struct DeleteArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct MoveArgs {
-    /// Note ID, filename, or title to move/rename.
+    /// Notebook selector, note ID, filename, or title to move/rename; not a filesystem path.
     #[serde(alias = "selector")]
     id: String,
     /// Destination path or new name. Can be a folder path (ending with /) or a new filename.
@@ -135,9 +135,11 @@ struct SearchArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct TodoArgs {
-    /// Description of the todo item.
-    #[serde(alias = "title")]
-    description: String,
+    /// Short title for the todo item.
+    title: String,
+    /// Optional longer description/body for the todo item.
+    #[serde(alias = "content")]
+    description: Option<String>,
     /// Optional checklist task titles to add to the todo.
     #[serde(default)]
     tasks: Vec<String>,
@@ -152,7 +154,7 @@ struct TodoArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct TaskIdArgs {
-    /// Todo ID to mark as done/undone.
+    /// Notebook selector, todo ID, filename, or title to mark as done/undone; not a filesystem path.
     #[serde(alias = "selector")]
     id: String,
     /// Optional task number within a todo item.
@@ -254,7 +256,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}} and pass args as a JSON object (stringified JSON is not accepted). This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector). In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
+        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}} and pass args as a JSON object (stringified JSON is not accepted). This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -406,7 +408,8 @@ impl McpServer {
                 let args: TodoArgs = parse_or_return!(TodoArgs, call.args);
                 self.nb
                     .todo(
-                        &args.description,
+                        &args.title,
+                        args.description.as_deref(),
                         &args.tasks,
                         &args.tags,
                         args.folder.as_deref(),
@@ -546,9 +549,10 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
                 "args must be a JSON object; stringified JSON args are rejected.",
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
+                "Returned ids such as coordination/mcp/1 or notebook:coordination/mcp/1 are nb selectors, not filesystem paths in the current repository.",
                 "nb.search takes queries[] (required, non-empty), plus mode: any (default OR) or all (AND).",
-                "nb.todo supports optional tasks[] to create checklist items via repeated --task flags.",
-                "Compatibility aliases: note commands selector->id, nb.todo title->description, nb.folders folder->parent, nb.mkdir folder->path.",
+                "nb.todo requires title; optional description (alias content) maps to nb --description; optional tasks[] creates checklist items via repeated --task flags.",
+                "Compatibility aliases: note commands selector->id, nb.todo content->description, nb.folders folder->parent, nb.mkdir folder->path.",
                 "nb.tasks is recursive by default; pass recursive:false to limit to the selected folder.",
                 "In nb.list output, todo state comes from [ ] / [x] in titles; leading glyphs like ✔️ are item-type markers from nb.",
                 "Call help with query 'nb.<command>' for exact command schemas."
@@ -563,7 +567,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
                 {"command": "nb.search", "description": "Full-text search notes (queries[] + mode any|all)"},
-                {"command": "nb.todo", "description": "Create a todo item (optional tasks[] checklist)"},
+                {"command": "nb.todo", "description": "Create a todo item (title required; optional description/content and tasks[] checklist)"},
                 {"command": "nb.do", "description": "Mark a todo as complete (optional task_number)"},
                 {"command": "nb.undo", "description": "Reopen a completed todo (optional task_number)"},
                 {"command": "nb.tasks", "description": "List todo items recursively (optional status: open|closed)"},
@@ -615,7 +619,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.todo" => command_help(
             "nb.todo",
-            "Create a todo item (optional tasks[] checklist)",
+            "Create a todo item (title required; optional description/content and tasks[] checklist)",
             json_schema_for::<TodoArgs>(),
         ),
         "nb.do" => command_help(
