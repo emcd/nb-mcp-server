@@ -1,7 +1,6 @@
 use anyhow::Result;
 use rmcp::{
     ErrorData as McpError, ServiceExt,
-    handler::server::router::tool::ToolRouter,
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
@@ -18,7 +17,6 @@ use crate::nb::{EditMode, NbClient, SearchMode, TaskStatus};
 #[derive(Clone)]
 struct McpServer {
     nb: NbClient,
-    tool_router: ToolRouter<Self>,
 }
 
 /// Parameters for the nb meta-tool.
@@ -252,10 +250,7 @@ impl McpServer {
             config.create_notebook,
             config.commit_signing_disabled,
         )?;
-        Ok(Self {
-            nb,
-            tool_router: Self::tool_router(),
-        })
+        Ok(Self { nb })
     }
 
     #[tool(
@@ -279,15 +274,10 @@ impl McpServer {
 #[tool_handler]
 impl rmcp::ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                "MCP server wrapping nb CLI for LLM-friendly note-taking. \
-                 Handles markdown escaping and notebook qualification automatically."
-                    .to_string(),
-            ),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "MCP server wrapping nb CLI for LLM-friendly note-taking. \
+             Handles markdown escaping and notebook qualification automatically.",
+        )
     }
 }
 
