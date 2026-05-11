@@ -1,6 +1,6 @@
 [package]
 name = "nb-mcp-server"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.88"
 description = "MCP server wrapping the nb CLI for LLM-friendly note-taking"
