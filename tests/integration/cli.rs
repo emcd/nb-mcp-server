@@ -26,4 +26,5 @@ fn help_flag_prints_usage() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("Usage: nb-mcp [OPTIONS]"));
     assert!(stderr.contains("--no-commit-signing"));
+    assert!(stderr.contains("--allow-top-level-notes"));
 }

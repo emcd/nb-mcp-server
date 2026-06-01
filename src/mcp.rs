@@ -247,16 +247,12 @@ struct ImportArgs {
 #[tool_router]
 impl McpServer {
     fn new(config: &Config) -> Result<Self> {
-        let nb = NbClient::new(
-            config.notebook.as_deref(),
-            config.create_notebook,
-            config.commit_signing_disabled,
-        )?;
+        let nb = NbClient::new(config)?;
         Ok(Self { nb })
     }
 
     #[tool(
-        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}} and pass args as a JSON object (stringified JSON is not accepted). This is a curated wrapper (not a 1:1 map of nb CLI flags). Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
+        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}} and pass args as a JSON object (stringified JSON is not accepted). This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -549,6 +545,8 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
                 "args must be a JSON object; stringified JSON args are rejected.",
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
+                "New note commands require folder by default. Use nb.mkdir to create new folders and nb.folders to list existing folders.",
+                "The notebook field is only for selecting a notebook. Use folder, not notebook, to place new notes in folders.",
                 "Returned ids such as coordination/mcp/1 or notebook:coordination/mcp/1 are nb selectors, not filesystem paths in the current repository.",
                 "nb.search takes queries[] (required, non-empty), plus mode: any (default OR) or all (AND).",
                 "nb.todo requires title; optional description (alias content) maps to nb --description; optional tasks[] creates checklist items via repeated --task flags.",
@@ -560,21 +558,21 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "commands": [
                 {"command": "nb.status", "description": "Show current notebook and stats"},
                 {"command": "nb.notebooks", "description": "List available notebooks (list-only; no add/delete in MCP)"},
-                {"command": "nb.add", "description": "Create a new note"},
+                {"command": "nb.add", "description": "Create a new note (folder required by default)"},
                 {"command": "nb.show", "description": "Read a note's content"},
                 {"command": "nb.edit", "description": "Update a note's content (replace by default)"},
                 {"command": "nb.delete", "description": "Delete a note"},
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
                 {"command": "nb.search", "description": "Full-text search notes (queries[] + mode any|all)"},
-                {"command": "nb.todo", "description": "Create a todo item (title required; optional description/content and tasks[] checklist)"},
+                {"command": "nb.todo", "description": "Create a todo item (folder required by default; title required; optional description/content and tasks[] checklist)"},
                 {"command": "nb.do", "description": "Mark a todo as complete (optional task_number)"},
                 {"command": "nb.undo", "description": "Reopen a completed todo (optional task_number)"},
                 {"command": "nb.tasks", "description": "List todo items recursively (optional status: open|closed)"},
-                {"command": "nb.bookmark", "description": "Save a URL as a bookmark"},
+                {"command": "nb.bookmark", "description": "Save a URL as a bookmark (folder required by default)"},
                 {"command": "nb.folders", "description": "List folders in notebook"},
                 {"command": "nb.mkdir", "description": "Create a folder"},
-                {"command": "nb.import", "description": "Import a file or URL into notebook"},
+                {"command": "nb.import", "description": "Import a file or URL into notebook (folder required by default)"},
             ],
             "invoke": {
                 "tool": "nb",
@@ -586,7 +584,11 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "Show notebook status",
             json_schema_for::<StatusArgs>(),
         ),
-        "nb.add" => command_help("nb.add", "Create a new note", json_schema_for::<AddArgs>()),
+        "nb.add" => command_help(
+            "nb.add",
+            "Create a new note. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them.",
+            json_schema_for::<AddArgs>(),
+        ),
         "nb.show" => command_help(
             "nb.show",
             "Read a note's content",
@@ -619,7 +621,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.todo" => command_help(
             "nb.todo",
-            "Create a todo item (title required; optional description/content and tasks[] checklist)",
+            "Create a todo item. The folder field is required by default; title is required; optional description/content and tasks[] create checklist items.",
             json_schema_for::<TodoArgs>(),
         ),
         "nb.do" => command_help(
@@ -639,7 +641,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.bookmark" => command_help(
             "nb.bookmark",
-            "Save a URL as a bookmark",
+            "Save a URL as a bookmark. The folder field is required by default.",
             json_schema_for::<BookmarkArgs>(),
         ),
         "nb.folders" => command_help(
@@ -654,7 +656,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.import" => command_help(
             "nb.import",
-            "Import a file or URL into notebook",
+            "Import a file or URL into notebook. The folder field is required by default.",
             json_schema_for::<ImportArgs>(),
         ),
         "nb.notebooks" => command_help(

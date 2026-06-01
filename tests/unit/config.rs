@@ -6,5 +6,6 @@ fn config_defaults_are_stable() {
     assert_eq!(config.notebook, None);
     assert!(!config.commit_signing_disabled);
     assert!(config.create_notebook);
+    assert!(!config.allow_top_level_notes);
     assert!(!config.show_paths);
 }

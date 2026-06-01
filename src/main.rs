@@ -3,7 +3,10 @@ use nb_mcp_server::{Config, mcp, nb, paths};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn parse_args() -> Config {
-    let mut config = Config::default();
+    let mut config = Config {
+        allow_top_level_notes: env_flag_enabled("NB_MCP_ALLOW_TOP_LEVEL_NOTES"),
+        ..Default::default()
+    };
     let mut args = std::env::args().skip(1);
 
     while let Some(arg) = args.next() {
@@ -16,6 +19,9 @@ fn parse_args() -> Config {
             }
             "--no-create-notebook" => {
                 config.create_notebook = false;
+            }
+            "--allow-top-level-notes" => {
+                config.allow_top_level_notes = true;
             }
             "--show-paths" => {
                 config.show_paths = true;
@@ -34,6 +40,8 @@ fn parse_args() -> Config {
                 eprintln!("      --no-commit-signing  Disable commit and tag signing");
                 eprintln!("                            in notebook repo");
                 eprintln!("      --no-create-notebook  Disable automatic notebook creation");
+                eprintln!("      --allow-top-level-notes");
+                eprintln!("                            Allow new notes at notebook root");
                 eprintln!("      --show-paths       Show notebook path and state directory");
                 eprintln!("      --version          Show version");
                 eprintln!("  -h, --help             Show this help");
@@ -48,12 +56,14 @@ fn parse_args() -> Config {
     config
 }
 
+fn env_flag_enabled(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+}
+
 async fn show_paths(config: &Config) -> Result<()> {
-    let nb = nb::NbClient::new(
-        config.notebook.as_deref(),
-        config.create_notebook,
-        config.commit_signing_disabled,
-    )?;
+    let nb = nb::NbClient::new(config)?;
     let notebook_path = nb.notebook_path(config.notebook.as_deref()).await?;
     let log_path = paths::get_log_path();
     let state_dir = log_path.parent().unwrap_or(log_path.as_path());

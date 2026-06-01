@@ -9,6 +9,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::process::Command;
 
+use crate::Config;
+
 /// Regex to match ANSI/ISO 2022 escape sequences.
 ///
 /// Covers:
@@ -47,7 +49,11 @@ pub struct NbClient {
     create_notebook: bool,
     /// Disable Git commit and tag signing for `nb` subprocesses.
     disable_git_signing: bool,
+    /// Allow new notes to be created at notebook root.
+    allow_top_level_notes: bool,
 }
+
+const FOLDER_REQUIRED_MESSAGE: &str = "This server is configured to require `folder` for new notes. Use the `nb.mkdir` tool to create new folders and the `nb.folders` tool to list existing folders.";
 
 /// Behavior mode for `nb edit` content updates.
 #[derive(Debug, Clone, Copy, Default, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -88,20 +94,41 @@ impl NbClient {
     ///
     /// CLI notebook argument takes precedence over NB_MCP_NOTEBOOK env var.
     /// Falls back to a Git-derived notebook name when available.
-    pub fn new(
-        cli_notebook: Option<&str>,
-        create_notebook: bool,
-        disable_git_signing: bool,
-    ) -> anyhow::Result<Self> {
-        let default_notebook = cli_notebook
+    pub fn new(config: &Config) -> anyhow::Result<Self> {
+        let default_notebook = config
+            .notebook
+            .as_deref()
             .map(String::from)
             .or_else(|| std::env::var("NB_MCP_NOTEBOOK").ok())
             .or_else(derive_git_notebook_name);
         Ok(Self {
             default_notebook,
-            create_notebook,
-            disable_git_signing,
+            create_notebook: config.create_notebook,
+            disable_git_signing: config.commit_signing_disabled,
+            allow_top_level_notes: config.allow_top_level_notes,
         })
+    }
+
+    fn require_folder_for_new_note(&self, folder: Option<&str>) -> Result<(), NbError> {
+        if self.allow_top_level_notes || folder.is_some_and(|value| !value.trim().is_empty()) {
+            return Ok(());
+        }
+        Err(NbError::CommandFailed(FOLDER_REQUIRED_MESSAGE.to_string()))
+    }
+
+    fn append_notebook_warning(&self, output: String, notebook: &str) -> String {
+        let Some(default_notebook) = self.default_notebook.as_deref() else {
+            return output;
+        };
+        if default_notebook == notebook {
+            return output;
+        }
+        append_warning(
+            output,
+            format!(
+                "Warning: wrote to notebook `{notebook}`, not the project default notebook `{default_notebook}`. If this was unintended, move or delete the note and retry with the correct notebook/folder."
+            ),
+        )
     }
 
     /// Resolves the notebook to use for a command.
@@ -249,6 +276,7 @@ impl NbClient {
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
+        self.require_folder_for_new_note(folder)?;
 
         let notebook = self.resolve_notebook(notebook).await?;
         let cmd = format!("{}:add", notebook);
@@ -281,7 +309,9 @@ impl NbClient {
             args.push(f.to_string());
         }
 
-        self.exec_vec(args).await
+        self.exec_vec(args)
+            .await
+            .map(|output| self.append_notebook_warning(output, &notebook))
     }
 
     /// Shows a note's content.
@@ -368,15 +398,18 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
-        self.exec_vec(edit_args(selector, content, mode)).await
+        let output = self.exec_vec(edit_args(selector, content, mode)).await?;
+        Ok(self.append_notebook_warning(output, &notebook))
     }
 
     /// Deletes a note.
     pub async fn delete(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
-        self.exec_vec(vec!["delete".to_string(), selector, "--force".to_string()])
-            .await
+        let output = self
+            .exec_vec(vec!["delete".to_string(), selector, "--force".to_string()])
+            .await?;
+        Ok(self.append_notebook_warning(output, &notebook))
     }
 
     /// Moves or renames a note.
@@ -388,13 +421,15 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
-        self.exec_vec(vec![
-            "move".to_string(),
-            selector,
-            destination.to_string(),
-            "--force".to_string(),
-        ])
-        .await
+        let output = self
+            .exec_vec(vec![
+                "move".to_string(),
+                selector,
+                destination.to_string(),
+                "--force".to_string(),
+            ])
+            .await?;
+        Ok(self.append_notebook_warning(output, &notebook))
     }
 
     /// Creates a todo item.
@@ -407,16 +442,19 @@ impl NbClient {
         folder: Option<&str>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
+        self.require_folder_for_new_note(folder)?;
         let notebook = self.resolve_notebook(notebook).await?;
-        self.exec_vec(todo_command_args(
-            &notebook,
-            title,
-            description,
-            tasks,
-            tags,
-            folder,
-        ))
-        .await
+        let output = self
+            .exec_vec(todo_command_args(
+                &notebook,
+                title,
+                description,
+                tasks,
+                tags,
+                folder,
+            ))
+            .await?;
+        Ok(self.append_notebook_warning(output, &notebook))
     }
 
     /// Marks a todo as done.
@@ -428,8 +466,10 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
-        self.exec_vec(task_command_args("do", selector, task_number))
-            .await
+        let output = self
+            .exec_vec(task_command_args("do", selector, task_number))
+            .await?;
+        Ok(self.append_notebook_warning(output, &notebook))
     }
 
     /// Marks a todo as not done.
@@ -441,8 +481,10 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let selector = format!("{}:{}", notebook, id);
-        self.exec_vec(task_command_args("undo", selector, task_number))
-            .await
+        let output = self
+            .exec_vec(task_command_args("undo", selector, task_number))
+            .await?;
+        Ok(self.append_notebook_warning(output, &notebook))
     }
 
     /// Lists todos.
@@ -526,6 +568,7 @@ impl NbClient {
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
+        self.require_folder_for_new_note(folder)?;
 
         // Build the destination path with optional folder
         let notebook = self.resolve_notebook(notebook).await?;
@@ -558,7 +601,9 @@ impl NbClient {
             args.push(tag_str);
         }
 
-        self.exec_vec(args).await
+        self.exec_vec(args)
+            .await
+            .map(|output| self.append_notebook_warning(output, &notebook))
     }
 
     /// Lists folders in a notebook.
@@ -588,8 +633,10 @@ impl NbClient {
     pub async fn mkdir(&self, path: &str, notebook: Option<&str>) -> Result<String, NbError> {
         let notebook = self.resolve_notebook(notebook).await?;
         let folder_path = mkdir_selector(&notebook, path);
-        self.exec_vec(vec!["add".to_string(), "folder".to_string(), folder_path])
-            .await
+        let output = self
+            .exec_vec(vec!["add".to_string(), "folder".to_string(), folder_path])
+            .await?;
+        Ok(self.append_notebook_warning(output, &notebook))
     }
 
     /// Imports a file or URL into the notebook.
@@ -602,6 +649,7 @@ impl NbClient {
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
+        self.require_folder_for_new_note(folder)?;
 
         let notebook = self.resolve_notebook(notebook).await?;
         let cmd = format!("{}:import", notebook);
@@ -627,8 +675,21 @@ impl NbClient {
             args.push(dest);
         }
 
-        self.exec_vec(args).await
+        self.exec_vec(args)
+            .await
+            .map(|output| self.append_notebook_warning(output, &notebook))
     }
+}
+
+fn append_warning(mut output: String, warning: String) -> String {
+    if !output.trim().is_empty() {
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+        output.push('\n');
+    }
+    output.push_str(&warning);
+    output
 }
 
 fn derive_git_notebook_name() -> Option<String> {
@@ -865,5 +926,59 @@ fn apply_git_signing_env(command: &mut Command) {
     let start_index = git_config_count(std::env::var("GIT_CONFIG_COUNT").ok().as_deref());
     for (name, value) in git_signing_env_vars(start_index) {
         command.env(name, value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FOLDER_REQUIRED_MESSAGE, NbClient, NbError, append_warning};
+
+    fn client(allow_top_level_notes: bool) -> NbClient {
+        NbClient {
+            default_notebook: Some("project".to_string()),
+            create_notebook: true,
+            disable_git_signing: false,
+            allow_top_level_notes,
+        }
+    }
+
+    #[test]
+    fn new_note_folder_guard_rejects_missing_or_blank_folder() {
+        for folder in [None, Some(""), Some("   ")] {
+            let err = client(false)
+                .require_folder_for_new_note(folder)
+                .unwrap_err();
+            assert!(
+                matches!(err, NbError::CommandFailed(message) if message == FOLDER_REQUIRED_MESSAGE)
+            );
+        }
+    }
+
+    #[test]
+    fn new_note_folder_guard_accepts_folder_or_opt_out() {
+        client(false)
+            .require_folder_for_new_note(Some("todos/mcp"))
+            .unwrap();
+        client(true).require_folder_for_new_note(None).unwrap();
+    }
+
+    #[test]
+    fn notebook_warning_is_appended_for_non_default_notebook() {
+        let output = client(false).append_notebook_warning("Added note.".to_string(), "other");
+        assert!(output.contains("Added note.\n\nWarning:"));
+        assert!(output.contains("`other`"));
+        assert!(output.contains("`project`"));
+    }
+
+    #[test]
+    fn notebook_warning_is_skipped_for_default_notebook() {
+        let output = client(false).append_notebook_warning("Added note.".to_string(), "project");
+        assert_eq!(output, "Added note.");
+    }
+
+    #[test]
+    fn append_warning_handles_empty_output() {
+        let output = append_warning(String::new(), "Warning: careful.".to_string());
+        assert_eq!(output, "Warning: careful.");
     }
 }

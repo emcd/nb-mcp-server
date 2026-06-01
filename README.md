@@ -58,6 +58,12 @@ Disable commit and tag signing in the notebook repository:
 ./target/release/nb-mcp --notebook myproject --no-commit-signing
 ```
 
+Allow new notes at the notebook root instead of requiring a folder:
+
+```bash
+./target/release/nb-mcp --notebook myproject --allow-top-level-notes
+```
+
 Print the installed version:
 
 ```bash
@@ -98,7 +104,7 @@ current repository. Notebook storage is managed by `nb` configuration.
 
 | Command | Description | Key Arguments |
 |---------|-------------|---------------|
-| `nb.add` | Create a note | `title`, `content`, `tags[]`, `folder` |
+| `nb.add` | Create a note | `title`, `content`, `tags[]`, `folder` required by default |
 | `nb.show` | Read a note | `id` (alias: `selector`) |
 | `nb.edit` | Update a note | `id` (alias: `selector`), `content`, `mode` (`replace` default, `append`, `prepend`) |
 | `nb.delete` | Delete a note | `id` (alias: `selector`) |
@@ -110,7 +116,7 @@ current repository. Notebook storage is managed by `nb` configuration.
 
 | Command | Description | Key Arguments |
 |---------|-------------|---------------|
-| `nb.todo` | Create a todo | `title`, optional `description` (alias: `content`), optional `tasks[]`, `tags[]` |
+| `nb.todo` | Create a todo | `folder` required by default, `title`, optional `description` (alias: `content`), optional `tasks[]`, `tags[]` |
 | `nb.do` | Mark complete | `id` (alias: `selector`), optional `task_number` |
 | `nb.undo` | Reopen | `id` (alias: `selector`), optional `task_number` |
 | `nb.tasks` | List todos | optional `status` (`open` or `closed`), optional `recursive` (`true` default) |
@@ -119,8 +125,8 @@ current repository. Notebook storage is managed by `nb` configuration.
 
 | Command | Description | Key Arguments |
 |---------|-------------|---------------|
-| `nb.bookmark` | Save a URL | `url`, `title`, `tags[]`, `comment` |
-| `nb.import` | Import file/URL | `source`, `folder`, `filename`, `convert` |
+| `nb.bookmark` | Save a URL | `url`, `folder` required by default, `title`, `tags[]`, `comment` |
+| `nb.import` | Import file/URL | `source`, `folder` required by default, `filename`, `convert` |
 | `nb.folders` | List folders | `parent` |
 | `nb.mkdir` | Create folder | `path` |
 | `nb.notebooks` | List notebooks only | (none) |
@@ -192,6 +198,23 @@ For Git worktrees, logs are named after both the master project and the
 worktree basename to avoid collisions between multiple MCP server instances.
 
 Use `--show-paths` to print the resolved notebook path and state directory.
+
+### Folder Requirement
+
+By default, note-creating commands require a `folder` argument so agents do not
+accidentally litter project notebook roots. This applies to `nb.add`, `nb.todo`,
+`nb.bookmark`, and `nb.import`. Use `nb.mkdir` to create new folders and
+`nb.folders` to list existing folders.
+
+Set `NB_MCP_ALLOW_TOP_LEVEL_NOTES=true` or pass `--allow-top-level-notes` to
+permit root-level note creation.
+
+### Notebook Overrides
+
+Mutating commands warn after successful writes when the `notebook` argument
+targets a notebook other than the project default. Cross-notebook writes remain
+allowed for collaboration across teams, but the warning helps catch accidental
+notebook/folder confusion.
 
 Control log level with `RUST_LOG`:
 
