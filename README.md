@@ -96,6 +96,8 @@ Add to your MCP client configuration (e.g., `.mcp.json`):
 All commands are accessed via the `nb` tool with a `command` parameter to
 reduce the token footprint of the MCP server.
 The `args` field must be a JSON object. Stringified JSON payloads are rejected.
+Unknown `args` fields are rejected instead of ignored; use the exact command
+schema fields or documented aliases.
 Returned identifiers such as `coordination/mcp/1` or
 `myproject:coordination/mcp/1` are `nb` selectors, not filesystem paths in the
 current repository. Notebook storage is managed by `nb` configuration.

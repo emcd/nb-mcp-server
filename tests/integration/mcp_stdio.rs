@@ -212,6 +212,28 @@ fn nb_tool_defaults_null_and_empty_args_objects() {
 }
 
 #[test]
+fn nb_tool_rejects_unknown_command_args() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let add_response = server.call_nb(
+        "nb.add",
+        json!({
+            "selector": "coordination/general",
+            "title": "Wrong field",
+            "content": "Should fail."
+        }),
+    );
+    assert!(is_tool_error(&add_response), "response: {add_response}");
+    assert!(tool_text(&add_response).contains("unknown field `selector`"));
+    let status_response = server.call_nb("nb.status", json!({"folder": "coordination"}));
+    assert!(
+        is_tool_error(&status_response),
+        "response: {status_response}"
+    );
+    assert!(tool_text(&status_response).contains("unknown field `folder`"));
+}
+
+#[test]
 fn nb_tool_reports_folder_required_before_running_nb() {
     let shim = shim_env();
     let mut server = start_server(&shim);

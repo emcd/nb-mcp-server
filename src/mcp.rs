@@ -21,6 +21,7 @@ struct McpServer {
 
 /// Parameters for the nb meta-tool.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct NbCall {
     /// Subcommand to execute (e.g., "status", "add", "list").
     command: String,
@@ -32,6 +33,7 @@ struct NbCall {
 
 /// Parameters for the help tool.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct HelpParams {
     /// Namespace or command to get help for (e.g., "nb" or "nb.add").
     query: String,
@@ -40,12 +42,14 @@ struct HelpParams {
 // Command-specific argument structs
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct StatusArgs {
     /// Notebook to check status for (uses default if not specified).
     notebook: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct AddArgs {
     /// Title for the note.
     title: Option<String>,
@@ -61,6 +65,7 @@ struct AddArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ShowArgs {
     /// Notebook selector, note ID, filename, or title to show; not a filesystem path.
     #[serde(alias = "selector")]
@@ -70,6 +75,7 @@ struct ShowArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct EditArgs {
     /// Notebook selector, note ID, filename, or title to edit; not a filesystem path.
     #[serde(alias = "selector")]
@@ -84,6 +90,7 @@ struct EditArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct DeleteArgs {
     /// Notebook selector, note ID, filename, or title to delete; not a filesystem path.
     #[serde(alias = "selector")]
@@ -93,6 +100,7 @@ struct DeleteArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct MoveArgs {
     /// Notebook selector, note ID, filename, or title to move/rename; not a filesystem path.
     #[serde(alias = "selector")]
@@ -106,6 +114,7 @@ struct MoveArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ListArgs {
     /// Folder path to list; do not include notebook-qualified syntax.
     folder: Option<String>,
@@ -119,6 +128,7 @@ struct ListArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct SearchArgs {
     /// Search terms/patterns (supports regex). Provide one or more terms.
     queries: Vec<String>,
@@ -135,6 +145,7 @@ struct SearchArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct TodoArgs {
     /// Short title for the todo item.
     title: String,
@@ -154,6 +165,7 @@ struct TodoArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct TaskIdArgs {
     /// Notebook selector, todo ID, filename, or title to mark as done/undone; not a filesystem path.
     #[serde(alias = "selector")]
@@ -166,6 +178,7 @@ struct TaskIdArgs {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct TasksArgs {
     /// Folder path to list todos from; do not include notebook-qualified syntax.
     folder: Option<String>,
@@ -196,6 +209,7 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct BookmarkArgs {
     /// URL to bookmark.
     url: String,
@@ -213,6 +227,7 @@ struct BookmarkArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct FoldersArgs {
     /// Parent folder path to list; do not include notebook-qualified syntax.
     #[serde(alias = "folder")]
@@ -222,6 +237,7 @@ struct FoldersArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct MkdirArgs {
     /// Folder path to create; do not include notebook-qualified syntax.
     #[serde(alias = "folder")]
@@ -231,6 +247,7 @@ struct MkdirArgs {
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ImportArgs {
     /// File path or URL to import.
     source: String,
@@ -253,7 +270,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}} and pass args as a JSON object (stringified JSON is not accepted). This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. notebook must be a bare notebook name; use folder for folders and id/selector for notes. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
+        description = r#"nb note-taking tool. Invoke with {"command":"nb.<subcommand>","args":{...}} and pass args as a JSON object (stringified JSON is not accepted). Unknown args are rejected. This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. notebook must be a bare notebook name; use folder for folders and id/selector for notes. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."#
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -545,6 +562,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "Invoke the nb tool with params: {\"command\":\"nb.<subcommand>\",\"args\":{...}}.",
                 "This MCP API is a curated subset of nb CLI behavior and flags.",
                 "args must be a JSON object; stringified JSON args are rejected.",
+                "Unknown args are rejected instead of ignored; use exact schema fields or documented aliases.",
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
                 "New note commands require folder by default. Use nb.mkdir to create new folders and nb.folders to list existing folders.",
                 "The notebook field is only for selecting a notebook. Use folder, not notebook, to place new notes in folders.",
