@@ -46,5 +46,31 @@ if [[ "${1:-}" == "notebooks" && "${2:-}" == "add" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "show" ]]; then
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  path="${selector#*:}"
+  if [[ "${notebook}" == "${selector}" || -z "${notebook}" || -z "${path}" ]]; then
+    echo "! invalid selector: ${selector}" >&2
+    exit 1
+  fi
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "shown ${notebook}:${path}"
+  exit 0
+fi
+
+if [[ "${1:-}" == *":add" ]]; then
+  notebook="${1%%:add}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "Added: [${notebook}:1] ${notebook}/shim-note.md \"Shim Note\""
+  exit 0
+fi
+
 echo "unsupported nb command: $*" >&2
 exit 2
