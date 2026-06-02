@@ -54,9 +54,9 @@ struct AddArgs {
     /// Tags to apply (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
-    /// Folder to create the note in.
+    /// Folder path to create the note in; do not include notebook-qualified syntax.
     folder: Option<String>,
-    /// Notebook to add to (uses default if not specified).
+    /// Bare notebook name to add to; do not include folders or selectors.
     notebook: Option<String>,
 }
 
@@ -65,7 +65,7 @@ struct ShowArgs {
     /// Notebook selector, note ID, filename, or title to show; not a filesystem path.
     #[serde(alias = "selector")]
     id: String,
-    /// Notebook to read from (uses default if not specified).
+    /// Bare notebook name to read from (uses default if not specified).
     notebook: Option<String>,
 }
 
@@ -79,7 +79,7 @@ struct EditArgs {
     /// Edit mode: `replace` (default), `append`, or `prepend`.
     #[serde(default)]
     mode: EditMode,
-    /// Notebook containing the note (uses default if not specified).
+    /// Bare notebook name containing the note (uses default if not specified).
     notebook: Option<String>,
 }
 
@@ -88,7 +88,7 @@ struct DeleteArgs {
     /// Notebook selector, note ID, filename, or title to delete; not a filesystem path.
     #[serde(alias = "selector")]
     id: String,
-    /// Notebook containing the note (uses default if not specified).
+    /// Bare notebook name containing the note (uses default if not specified).
     notebook: Option<String>,
 }
 
@@ -97,23 +97,24 @@ struct MoveArgs {
     /// Notebook selector, note ID, filename, or title to move/rename; not a filesystem path.
     #[serde(alias = "selector")]
     id: String,
-    /// Destination path or new name. Can be a folder path (ending with /) or a new filename.
+    /// Destination path or new name. Do not include notebook-qualified syntax.
+    /// Can be a folder path (ending with /) or a new filename.
     /// Examples: "new-folder/" (move to folder), "new-name.md" (rename), "folder/new-name.md" (move and rename).
     destination: String,
-    /// Notebook containing the note (uses default if not specified).
+    /// Bare notebook name containing the note (uses default if not specified).
     notebook: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct ListArgs {
-    /// Folder to list (lists root if not specified).
+    /// Folder path to list; do not include notebook-qualified syntax.
     folder: Option<String>,
     /// Filter by tags (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
     /// Maximum number of items to return.
     limit: Option<u32>,
-    /// Notebook to list from (uses default if not specified).
+    /// Bare notebook name to list from (uses default if not specified).
     notebook: Option<String>,
 }
 
@@ -127,9 +128,9 @@ struct SearchArgs {
     /// Filter by tags (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
-    /// Folder to search within (searches all if not specified).
+    /// Folder path to search within; do not include notebook-qualified syntax.
     folder: Option<String>,
-    /// Notebook to search in (uses default if not specified).
+    /// Bare notebook name to search in (uses default if not specified).
     notebook: Option<String>,
 }
 
@@ -146,9 +147,9 @@ struct TodoArgs {
     /// Tags to apply (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
-    /// Folder to create the todo in.
+    /// Folder path to create the todo in; do not include notebook-qualified syntax.
     folder: Option<String>,
-    /// Notebook to add todo to (uses default if not specified).
+    /// Bare notebook name to add todo to; do not include folders or selectors.
     notebook: Option<String>,
 }
 
@@ -160,13 +161,13 @@ struct TaskIdArgs {
     /// Optional task number within a todo item.
     #[serde(alias = "task")]
     task_number: Option<u32>,
-    /// Notebook containing the todo (uses default if not specified).
+    /// Bare notebook name containing the todo (uses default if not specified).
     notebook: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct TasksArgs {
-    /// Folder to list todos from (lists all if not specified).
+    /// Folder path to list todos from; do not include notebook-qualified syntax.
     folder: Option<String>,
     /// Optional status filter (`open` or `closed`).
     #[serde(alias = "state")]
@@ -175,7 +176,7 @@ struct TasksArgs {
     /// Defaults to true; set false for folder-only scope.
     #[serde(default = "default_true", alias = "recurse")]
     recursive: bool,
-    /// Notebook to list todos from (uses default if not specified).
+    /// Bare notebook name to list todos from (uses default if not specified).
     notebook: Option<String>,
 }
 
@@ -205,27 +206,27 @@ struct BookmarkArgs {
     tags: Vec<String>,
     /// Comment or description.
     comment: Option<String>,
-    /// Folder to create the bookmark in.
+    /// Folder path to create the bookmark in; do not include notebook-qualified syntax.
     folder: Option<String>,
-    /// Notebook to add bookmark to (uses default if not specified).
+    /// Bare notebook name to add bookmark to; do not include folders or selectors.
     notebook: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct FoldersArgs {
-    /// Parent folder to list (lists root if not specified).
+    /// Parent folder path to list; do not include notebook-qualified syntax.
     #[serde(alias = "folder")]
     parent: Option<String>,
-    /// Notebook to list folders from (uses default if not specified).
+    /// Bare notebook name to list folders from (uses default if not specified).
     notebook: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct MkdirArgs {
-    /// Path of folder to create.
+    /// Folder path to create; do not include notebook-qualified syntax.
     #[serde(alias = "folder")]
     path: String,
-    /// Notebook to create folder in (uses default if not specified).
+    /// Bare notebook name to create folder in (uses default if not specified).
     notebook: Option<String>,
 }
 
@@ -233,14 +234,14 @@ struct MkdirArgs {
 struct ImportArgs {
     /// File path or URL to import.
     source: String,
-    /// Folder to import into (imports to root if not specified).
+    /// Folder path to import into; do not include notebook-qualified syntax.
     folder: Option<String>,
     /// Filename to use in notebook (uses original name if not specified).
     filename: Option<String>,
     /// Convert HTML content to Markdown.
     #[serde(default)]
     convert: bool,
-    /// Notebook to import into (uses default if not specified).
+    /// Bare notebook name to import into; do not include folders or selectors.
     notebook: Option<String>,
 }
 
@@ -252,7 +253,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}} and pass args as a JSON object (stringified JSON is not accepted). This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
+        description = "nb note-taking tool. Invoke with {\"command\":\"nb.<subcommand>\",\"args\":{...}} and pass args as a JSON object (stringified JSON is not accepted). This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. notebook must be a bare notebook name; use folder for folders and id/selector for notes. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -547,6 +548,8 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "Common fields: id (alias selector), folder path, tags array, optional notebook override, plus task_number/status for todo commands.",
                 "New note commands require folder by default. Use nb.mkdir to create new folders and nb.folders to list existing folders.",
                 "The notebook field is only for selecting a notebook. Use folder, not notebook, to place new notes in folders.",
+                "notebook must be a bare notebook name without ':' or '/'. folder must be a folder path without a notebook qualifier.",
+                "Existing-item commands may accept copied id/selector values like notebook:folder/id, but reject conflicts with the notebook field.",
                 "Returned ids such as coordination/mcp/1 or notebook:coordination/mcp/1 are nb selectors, not filesystem paths in the current repository.",
                 "nb.search takes queries[] (required, non-empty), plus mode: any (default OR) or all (AND).",
                 "nb.todo requires title; optional description (alias content) maps to nb --description; optional tasks[] creates checklist items via repeated --task flags.",

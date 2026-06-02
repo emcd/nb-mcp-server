@@ -99,6 +99,10 @@ The `args` field must be a JSON object. Stringified JSON payloads are rejected.
 Returned identifiers such as `coordination/mcp/1` or
 `myproject:coordination/mcp/1` are `nb` selectors, not filesystem paths in the
 current repository. Notebook storage is managed by `nb` configuration.
+The `notebook` argument must be a bare notebook name. Use `folder` for folder
+paths and `id` / `selector` for note selectors. Existing-item commands accept
+copied selectors such as `myproject:coordination/mcp/1`, but reject conflicts
+with a separate `notebook` argument.
 
 ### Notes
 
@@ -215,6 +219,10 @@ Mutating commands warn after successful writes when the `notebook` argument
 targets a notebook other than the project default. Cross-notebook writes remain
 allowed for collaboration across teams, but the warning helps catch accidental
 notebook/folder confusion.
+
+The `notebook` argument accepts only bare notebook names, not selector syntax.
+For example, use `notebook: "other-team"` with `folder: "todos/mcp"`, not
+`notebook: "other-team:todos/mcp"`.
 
 Control log level with `RUST_LOG`:
 

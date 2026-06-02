@@ -55,6 +55,10 @@ pub struct NbClient {
 
 const FOLDER_REQUIRED_MESSAGE: &str = "This server is configured to require `folder` for new notes. Use the `nb.mkdir` tool to create new folders and the `nb.folders` tool to list existing folders.";
 
+const NOTEBOOK_FIELD_MESSAGE: &str = "Invalid `notebook`: use a bare notebook name only. Use `folder` for folder paths and `id`/`selector` for note selectors.";
+
+const FOLDER_FIELD_MESSAGE: &str = "Invalid folder path: use `folder` for folder paths only, not notebook-qualified selectors. To choose a notebook, use the separate `notebook` field.";
+
 /// Behavior mode for `nb edit` content updates.
 #[derive(Debug, Clone, Copy, Default, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -116,6 +120,31 @@ impl NbClient {
         Err(NbError::CommandFailed(FOLDER_REQUIRED_MESSAGE.to_string()))
     }
 
+    async fn resolve_target_selector(
+        &self,
+        id: &str,
+        notebook: Option<&str>,
+    ) -> Result<(String, String), NbError> {
+        if let Some((embedded_notebook, path)) = parse_qualified_selector(id)? {
+            let notebook = match notebook {
+                Some(value) => {
+                    validate_notebook_name(value)?;
+                    if value != embedded_notebook {
+                        return Err(NbError::CommandFailed(format!(
+                            "ambiguous selector: id targets notebook `{embedded_notebook}`, but notebook field is `{value}`"
+                        )));
+                    }
+                    embedded_notebook.to_string()
+                }
+                _ => embedded_notebook.to_string(),
+            };
+            self.ensure_existing_notebook(&notebook).await?;
+            return Ok((notebook, format!("{}:{}", embedded_notebook, path)));
+        }
+        let notebook = self.resolve_notebook(notebook).await?;
+        Ok((notebook.clone(), format!("{}:{}", notebook, id)))
+    }
+
     fn append_notebook_warning(&self, output: String, notebook: &str) -> String {
         let Some(default_notebook) = self.default_notebook.as_deref() else {
             return output;
@@ -134,9 +163,11 @@ impl NbClient {
     /// Resolves the notebook to use for a command.
     fn resolve_notebook_name(&self, notebook: Option<&str>) -> Result<String, NbError> {
         if let Some(name) = notebook {
+            validate_notebook_name(name)?;
             return Ok(name.to_string());
         }
         if let Some(name) = self.default_notebook.as_deref() {
+            validate_notebook_name(name)?;
             return Ok(name.to_string());
         }
         Err(NbError::CommandFailed(
@@ -151,6 +182,36 @@ impl NbClient {
     }
 
     async fn ensure_notebook(&self, notebook: &str) -> Result<(), NbError> {
+        match self.check_notebook(notebook).await {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                if !self.create_notebook {
+                    return Err(NbError::CommandFailed(format!(
+                        "notebook not found; create it with the nb CLI (`nb notebooks add {}`) \
+                         or remove --no-create-notebook",
+                        notebook
+                    )));
+                }
+                self.exec_vec(vec![
+                    "notebooks".to_string(),
+                    "add".to_string(),
+                    notebook.to_string(),
+                ])
+                .await?;
+                Ok(())
+            }
+        }
+    }
+
+    async fn ensure_existing_notebook(&self, notebook: &str) -> Result<(), NbError> {
+        self.check_notebook(notebook).await.map_err(|_| {
+            NbError::CommandFailed(format!(
+                "notebook not found: `{notebook}`. Use a copied selector only for an existing notebook."
+            ))
+        })
+    }
+
+    async fn check_notebook(&self, notebook: &str) -> Result<(), NbError> {
         let show_result = self
             .exec_vec(vec![
                 "notebooks".to_string(),
@@ -168,22 +229,9 @@ impl NbClient {
                 }
                 Ok(())
             }
-            Err(_) => {
-                if !self.create_notebook {
-                    return Err(NbError::CommandFailed(format!(
-                        "notebook not found; create it with the nb CLI (`nb notebooks add {}`) \
-                         or remove --no-create-notebook",
-                        notebook
-                    )));
-                }
-                self.exec_vec(vec![
-                    "notebooks".to_string(),
-                    "add".to_string(),
-                    notebook.to_string(),
-                ])
-                .await?;
-                Ok(())
-            }
+            Err(_) => Err(NbError::CommandFailed(format!(
+                "notebook not found: `{notebook}`"
+            ))),
         }
     }
 
@@ -277,6 +325,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
         self.require_folder_for_new_note(folder)?;
+        validate_folder_option(folder)?;
 
         let notebook = self.resolve_notebook(notebook).await?;
         let cmd = format!("{}:add", notebook);
@@ -316,8 +365,7 @@ impl NbClient {
 
     /// Shows a note's content.
     pub async fn show(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook(notebook).await?;
-        let selector = format!("{}:{}", notebook, id);
+        let (_, selector) = self.resolve_target_selector(id, notebook).await?;
         self.exec_vec(vec!["show".to_string(), selector, "--no-color".to_string()])
             .await
     }
@@ -331,6 +379,7 @@ impl NbClient {
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
+        validate_folder_option(folder)?;
 
         let notebook = self.resolve_notebook(notebook).await?;
         let cmd = match folder {
@@ -373,6 +422,7 @@ impl NbClient {
         folder: Option<&str>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
+        validate_folder_option(folder)?;
         if queries.is_empty() {
             return Err(NbError::CommandFailed(
                 "at least one search query is required".to_string(),
@@ -396,16 +446,14 @@ impl NbClient {
         mode: EditMode,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook(notebook).await?;
-        let selector = format!("{}:{}", notebook, id);
+        let (notebook, selector) = self.resolve_target_selector(id, notebook).await?;
         let output = self.exec_vec(edit_args(selector, content, mode)).await?;
         Ok(self.append_notebook_warning(output, &notebook))
     }
 
     /// Deletes a note.
     pub async fn delete(&self, id: &str, notebook: Option<&str>) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook(notebook).await?;
-        let selector = format!("{}:{}", notebook, id);
+        let (notebook, selector) = self.resolve_target_selector(id, notebook).await?;
         let output = self
             .exec_vec(vec!["delete".to_string(), selector, "--force".to_string()])
             .await?;
@@ -419,8 +467,8 @@ impl NbClient {
         destination: &str,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook(notebook).await?;
-        let selector = format!("{}:{}", notebook, id);
+        validate_destination(destination)?;
+        let (notebook, selector) = self.resolve_target_selector(id, notebook).await?;
         let output = self
             .exec_vec(vec![
                 "move".to_string(),
@@ -443,6 +491,7 @@ impl NbClient {
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         self.require_folder_for_new_note(folder)?;
+        validate_folder_option(folder)?;
         let notebook = self.resolve_notebook(notebook).await?;
         let output = self
             .exec_vec(todo_command_args(
@@ -464,8 +513,7 @@ impl NbClient {
         task_number: Option<u32>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook(notebook).await?;
-        let selector = format!("{}:{}", notebook, id);
+        let (notebook, selector) = self.resolve_target_selector(id, notebook).await?;
         let output = self
             .exec_vec(task_command_args("do", selector, task_number))
             .await?;
@@ -479,8 +527,7 @@ impl NbClient {
         task_number: Option<u32>,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
-        let notebook = self.resolve_notebook(notebook).await?;
-        let selector = format!("{}:{}", notebook, id);
+        let (notebook, selector) = self.resolve_target_selector(id, notebook).await?;
         let output = self
             .exec_vec(task_command_args("undo", selector, task_number))
             .await?;
@@ -495,6 +542,7 @@ impl NbClient {
         recursive: bool,
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
+        validate_folder_option(folder)?;
         let notebook = self.resolve_notebook(notebook).await?;
         let folder = folder.map(normalize_folder);
         let scopes = if recursive {
@@ -569,6 +617,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
         self.require_folder_for_new_note(folder)?;
+        validate_folder_option(folder)?;
 
         // Build the destination path with optional folder
         let notebook = self.resolve_notebook(notebook).await?;
@@ -613,6 +662,7 @@ impl NbClient {
         notebook: Option<&str>,
     ) -> Result<String, NbError> {
         let mut args = vec!["list".to_string()];
+        validate_folder_option(parent)?;
 
         let notebook = self.resolve_notebook(notebook).await?;
         let path = match parent {
@@ -631,6 +681,7 @@ impl NbClient {
 
     /// Creates a folder.
     pub async fn mkdir(&self, path: &str, notebook: Option<&str>) -> Result<String, NbError> {
+        validate_folder_path(path)?;
         let notebook = self.resolve_notebook(notebook).await?;
         let folder_path = mkdir_selector(&notebook, path);
         let output = self
@@ -650,6 +701,7 @@ impl NbClient {
     ) -> Result<String, NbError> {
         let mut args = Vec::new();
         self.require_folder_for_new_note(folder)?;
+        validate_folder_option(folder)?;
 
         let notebook = self.resolve_notebook(notebook).await?;
         let cmd = format!("{}:import", notebook);
@@ -690,6 +742,51 @@ fn append_warning(mut output: String, warning: String) -> String {
     }
     output.push_str(&warning);
     output
+}
+
+fn validate_notebook_name(name: &str) -> Result<(), NbError> {
+    if name.trim().is_empty() || name.contains(':') || name.contains('/') || name.contains('\\') {
+        return Err(NbError::CommandFailed(NOTEBOOK_FIELD_MESSAGE.to_string()));
+    }
+    Ok(())
+}
+
+fn validate_folder_option(folder: Option<&str>) -> Result<(), NbError> {
+    if let Some(path) = folder {
+        validate_folder_path(path)?;
+    }
+    Ok(())
+}
+
+fn validate_folder_path(path: &str) -> Result<(), NbError> {
+    if path.trim().is_empty() || path.contains(':') {
+        return Err(NbError::CommandFailed(FOLDER_FIELD_MESSAGE.to_string()));
+    }
+    Ok(())
+}
+
+fn validate_destination(destination: &str) -> Result<(), NbError> {
+    if destination.trim().is_empty() || destination.contains(':') {
+        return Err(NbError::CommandFailed(
+            "Invalid destination: use a folder path or filename only, not a notebook-qualified selector."
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn parse_qualified_selector(selector: &str) -> Result<Option<(&str, &str)>, NbError> {
+    let Some((notebook, path)) = selector.split_once(':') else {
+        return Ok(None);
+    };
+    validate_notebook_name(notebook)?;
+    if path.trim().is_empty() || path.contains(':') {
+        return Err(NbError::CommandFailed(
+            "Invalid selector: use at most one notebook qualifier, as `<notebook>:<folder>/<id>`."
+                .to_string(),
+        ));
+    }
+    Ok(Some((notebook, path)))
 }
 
 fn derive_git_notebook_name() -> Option<String> {
@@ -931,7 +1028,11 @@ fn apply_git_signing_env(command: &mut Command) {
 
 #[cfg(test)]
 mod tests {
-    use super::{FOLDER_REQUIRED_MESSAGE, NbClient, NbError, append_warning};
+    use super::{
+        FOLDER_FIELD_MESSAGE, FOLDER_REQUIRED_MESSAGE, NOTEBOOK_FIELD_MESSAGE, NbClient, NbError,
+        append_warning, parse_qualified_selector, validate_destination, validate_folder_path,
+        validate_notebook_name,
+    };
 
     fn client(allow_top_level_notes: bool) -> NbClient {
         NbClient {
@@ -980,5 +1081,47 @@ mod tests {
     fn append_warning_handles_empty_output() {
         let output = append_warning(String::new(), "Warning: careful.".to_string());
         assert_eq!(output, "Warning: careful.");
+    }
+
+    #[test]
+    fn notebook_validation_rejects_selector_like_values() {
+        for notebook in ["", "   ", "project:todos/mcp", "todos/mcp", "todos\\mcp"] {
+            let err = validate_notebook_name(notebook).unwrap_err();
+            assert!(
+                matches!(err, NbError::CommandFailed(message) if message == NOTEBOOK_FIELD_MESSAGE)
+            );
+        }
+        validate_notebook_name("project").unwrap();
+    }
+
+    #[test]
+    fn folder_validation_rejects_notebook_qualified_values() {
+        for folder in ["", "   ", "project:todos/mcp"] {
+            let err = validate_folder_path(folder).unwrap_err();
+            assert!(
+                matches!(err, NbError::CommandFailed(message) if message == FOLDER_FIELD_MESSAGE)
+            );
+        }
+        validate_folder_path("todos/mcp").unwrap();
+    }
+
+    #[test]
+    fn destination_validation_rejects_notebook_qualified_values() {
+        assert!(validate_destination("todos/mcp/new-name.md").is_ok());
+        assert!(validate_destination("project:todos/mcp/1").is_err());
+    }
+
+    #[test]
+    fn qualified_selector_parsing_accepts_copied_selectors() {
+        let parsed = parse_qualified_selector("project:todos/mcp/1").unwrap();
+        assert_eq!(parsed, Some(("project", "todos/mcp/1")));
+        assert_eq!(parse_qualified_selector("todos/mcp/1").unwrap(), None);
+    }
+
+    #[test]
+    fn qualified_selector_parsing_rejects_ambiguous_selectors() {
+        assert!(parse_qualified_selector("project:").is_err());
+        assert!(parse_qualified_selector("project:todos:1").is_err());
+        assert!(parse_qualified_selector("project/folder:1").is_err());
     }
 }
