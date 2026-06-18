@@ -72,5 +72,41 @@ if [[ "${1:-}" == *":add" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "search" ]]; then
+  # search {notebook}: query1 query2 --or --no-color
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "searched ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == *":todo" && "${2:-}" == "add" ]]; then
+  # {notebook}:todo add folder/ title --task t1 --tags #tag
+  cmd="${1:-}"
+  notebook="${cmd%%:todo}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "Added: [${notebook}:1] ${notebook}/shim-todo.md \"Shim Todo\""
+  exit 0
+fi
+
+if [[ "${1:-}" == "list" ]]; then
+  # list {notebook}: or list {notebook}:{folder}/ --no-color --tags #tag
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "listed ${notebook}"
+  exit 0
+fi
+
 echo "unsupported nb command: $*" >&2
 exit 2
