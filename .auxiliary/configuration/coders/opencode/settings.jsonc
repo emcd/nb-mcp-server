@@ -48,6 +48,8 @@
       "mode": "primary",
       // "model": "zai-coding-plan/glm-4.7"
       // "model": "deepseek/deepseek-chat"
+      // "model": "opencode/big-pickle"
+      // "model": "xiaomi-token-plan-sgp/mimo-v2.5-pro"
       // "model": "minimax-coding-plan/MiniMax-M2.7"
       "model": "openai/gpt-5.5"
     },
@@ -55,6 +57,8 @@
       "mode": "primary",
       // "model": "zai-coding-plan/glm-4.7"
       // "model": "deepseek/deepseek-chat"
+      // "model": "opencode/big-pickle"
+      // "model": "xiaomi-token-plan-sgp/mimo-v2.5-pro"
       // "model": "minimax-coding-plan/MiniMax-M2.7"
       "model": "openai/gpt-5.5"
     }
@@ -97,6 +101,8 @@
       "cargo test *": "allow",
       "cargo check *": "allow",
       "cargo clippy *": "allow",
+      "cargo fmt": "allow",
+      "cargo fmt *": "allow",
       "awk *": "allow",
       "cat *": "allow",
       "cut *": "allow",
@@ -122,21 +128,31 @@
       "gh status *": "allow",
       "git add *": "allow",
       "git branch *": "allow",
+      "git cat-file *": "allow",
       "git checkout *": "allow",
       "git diff *": "allow",
       "git fetch *": "allow",
+      "git grep *": "allow",
       "git log *": "allow",
+      "git ls-files": "allow",
+      "git ls-files *": "allow",
+      "git ls-tree *": "allow",
+      "git merge-base *": "allow",
       "git rebase *": "allow",
       "git restore *": "allow",
+      "git rev-list *": "allow",
       "git rev-parse *": "allow",
       "git show *": "allow",
       "git stash list": "allow",
       "git stash list *": "allow",
       "git status *": "allow",
+      "git worktree list": "allow",
+      "git worktree list *": "allow",
       "grep *": "allow",
       "head *": "allow",
       "ls *": "allow",
       "mkdir *": "allow",
+      "openspec *": "allow",
       "ps *": "allow",
       "pwd *": "allow",
       "rg *": "allow",

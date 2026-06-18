@@ -1,3 +1,4 @@
+# agentsmgr populates generated coder content in these directories.
 agent/
 command/
 prompt/

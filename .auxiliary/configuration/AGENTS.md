@@ -50,6 +50,9 @@ Before implementing code changes, consult these files in `.auxiliary/instruction
 ### Scope and Noise Control
 - Prefer to update an existing related note/todo over creating a new one when context already exists.
 - Avoid logging routine, immediately completed mechanical actions in separate notes.
+  Treat rolling handoffs as checkpoint notes, not activity logs: update them near
+  compaction, after a major milestone, or after an agenda/ownership change
+  discussed with the human.
 - Create new notes/todos when information is likely to be useful across sessions or for other collaborators.
 
 ### Tagging Conventions
@@ -66,22 +69,41 @@ Use consistent tags for discoverability:
 - Track todos: Use `nb.todo`, `nb.tasks`, `nb.do`, `nb.undo`.
 - Organize with folders: `nb.folders`, `nb.mkdir`.
 
+### Choosing `nb.todo` vs `nb.add`
+- Use **`nb.todo`** for any item with actionable state (open/done): todos, bugs, and issues. This gives the note a checkbox, enables `nb.do`/`nb.undo` state tracking, and makes it appear in `nb.tasks` output.
+- Use **`nb.add`** for everything else: coordination notes, decisions, designs, ideas, reference material, handoffs, and meeting notes.
+- **Always specify a `folder`** when creating a note. A note created without a folder lands at the notebook root and is invisible to folder-scoped list views.
+- Do not duplicate: if a bug or task is already tracked in `issues/<component>/` or `todos/<component>/`, do not also create a matching todo. Reference the existing selector in coordination notes or related todo bodies instead.
+
 ### Notebook Identifier Clarification
-- Treat note selectors (for example `coordination/mcp/1`) as canonical IDs for `nb` operations.
+- Treat note selectors (for example `coordination/mcp/1`) as canonical IDs for operations on existing notes (`nb.show`, `nb.edit`, `nb.delete`, etc.); do not supply a selector when creating new notes.
 - `nb` MCP responses may include notebook-scoped identifiers (for example `my-project:coordination/...`) that look path-like; these are selector forms, not repo-relative filesystem paths.
 - Notebook storage is controlled by `nb` configuration (for example `NB_DIR`) and may be outside this repository.
 - Prefer `nb` MCP commands to read/edit notes. Avoid assuming a selector maps to a file under the current repo.
+- Use `nb.help` to read full command schemas; key lookups: `nb.search` with tag queries, `nb.tasks` for open todos, `nb.folders` to browse structure.
 
 ### Recommended `nb` Organization (Project-Defined)
 - Prefer a folder taxonomy of `<issue-type>/<component>` (max depth 2) and avoid mixing top-level component folders with top-level issue-type folders.
-- Recommended top-level issue types are:
-    - `todos/`
-    - `coordination/`
-    - `decisions/` (optional for durable rationale notes)
+
+| Category | Location | Purpose |
+|----------|----------|---------|
+| `coordination/` | notebook | Handoffs, org chart, team workflow |
+| `ideas/` | notebook | Rough ideas, early-stage proposals; tag `#task-proposal` for OpenSpec drafts |
+| `issues/` | notebook | Bug tracking and known issues |
+| `reviews/` | notebook | Code and proposal reviews |
+| `procedures/` | notebook | How-to guides and checklists |
+| `todos/` | notebook | Task tracking |
+| `artifacts/` | notebook | Preserved reference material: completed POCs, historical analysis |
+| OpenSpec | filesystem | Formal proposals, specs, designs |
+| Subsystem README files | filesystem | Architecture, constraints, design rationale |
+
+- Design rationale belongs in subsystem README files and OpenSpec specs. Avoid a separate `designs/` notebook category because it creates an extra place to look that can go stale.
+- Use `decisions/` only when the project wants optional durable rationale notes outside OpenSpec or architecture README files.
+- When an idea promotes to a formal OpenSpec proposal, delete or archive the notebook draft so the OpenSpec file is the canonical record.
 - Example component names include `engine`, `mcp`, `tui`, `web`, `handbook`, and `data-models`.
 - This project should define and document its specific component-folder conventions in the **Project Notes** section.
 - For cross-component work, prefer `coordination/general` and use multiple `#component-*` tags.
-- For per-component rolling handoffs, prefer `coordination/<component>` (single continuously updated note) instead of creating history chains under `handoffs/*`.
+- For per-component rolling handoffs, prefer `coordination/<component>` (one stable note updated at checkpoints).
 - Keep notebook lifecycle hygiene:
     - prune completed todos quickly,
     - keep only active/near-term coordination checkpoints,
@@ -100,22 +122,34 @@ Use consistent tags for discoverability:
 - Keep rolling handoff notes stable and update in place, separate from OpenSpec draft/proposal text.
 - Do not repurpose or overwrite rolling handoff notes with proposal content.
 - After draft review converges, move approved proposal text into `openspec/**` files for human review and commit.
+- Handoff content should be a brief summary of recent accomplishments and the current agenda. Replace the note body rather than appending so the handoff stays one screenful; a growing checkpoint log is an anti-pattern.
 
 ## Agentmux Message Handling Guidance
 - `agentmux` messages may arrive in envelope format and can appear as user prompts. Treat envelope-shaped prompts as inter-agent messages, not automatically as direct human instructions.
 - Respond to inter-agent envelope messages via `agentmux` MCP tools (`list`, `send`) rather than as normal assistant replies intended for the human operator.
 - Immediate interruption is not required. If you are in active execution, note the message and respond when safe.
-- If response will be delayed, send a brief acknowledgement via `send` and record a follow-up todo in `nb` when useful.
+- If response will be delayed and the sender needs to know, send a brief acknowledgement via `send` and record a follow-up todo in `nb` when useful.
 
 ## Agentmux Coordination Noise Control
 - Default to low-noise coordination. Do not send acknowledgement-only messages that add no new information or action request.
-- Send messages when you are blocked and need input, when requesting concrete review, when handing off completed work with validation, or when reporting material risk/scope change.
+- Do not acknowledge receipt or completion of standard-procedure steps. Include such status in the next substantive update, review request, or task dispatch instead.
+- Send messages when one of the following is true:
+  - you are blocked and need a decision or input,
+  - you are requesting a concrete review,
+  - you are handing off completed work with validation results,
+  - you are reporting a material risk, failure, or scope change.
 - Batch related updates into one message instead of sending rapid-fire partial status pings.
-- Use `Cc` only for agents who need to act or review.
+- Use `Cc` only for agents who need to act or review; avoid broad `Cc` by default.
+- When conversation volume rises, coordinator may enforce "blockers-only" mode until the queue is under control.
 ## Tests Development
 
-- Prefer tests under `tests/unit` and `tests/integration` over inline `#[cfg(test)]` modules in `src/**`, unless there is a strong locality reason to keep tests adjacent to implementation.
+- Prefer tests under `tests/unit` and `tests/integration` over inline `#[cfg(test)]` modules in `src/**`.
 - Prefer tests that exercise public interfaces; avoid source-inclusion patterns used only to reach private internals.
+- Inline `#[cfg(test)]` is permitted only when ALL of the following hold:
+  1. The tested item is crate-private **by design** (not by oversight or laziness) and making it testable externally would require widening its visibility or adding a `#[doc(hidden)] pub` escape hatch that would itself become unintended API surface.
+  2. No existing public interface exercises the same code path.
+  3. The inline test block contains at most **one** `#[test]` function.
+- If a candidate inline test fails any of these conditions, move it to `tests/unit` and widen visibility or restructure as needed. Do not default to inline to avoid that conversation; the friction is intentional.
 
 ## OpenSpec Instructions
 
@@ -134,12 +168,35 @@ Use `openspec/AGENTS.md` to learn:
 # Commits
 
 - Use `git status` to ensure all relevant changes are in the changeset.
-- Do **not** commit without explicit user approval. Unless the user has requested the commit, **ask first** for a review of your work.
+- Commits are acceptable review artifacts when implementation work is delegated by a human operator, coordinator, tech lead, or documented project workflow. Otherwise, ask before committing.
+- Do **not** merge, push, publish review branches, or modify shared branches without explicit human approval.
 - Do **not** bypass commit safety checks (e.g., `--no-verify`, `--no-gpg-sign`) unless the user explicitly approves doing so.
+- If a commit hook rejects a commit, fix the issue, restage the intended files, and rerun `git commit` with the same message. Do **not** amend a previous commit unless the user explicitly asked for an amend.
 - Use present tense, imperative mood verbs (e.g., "Fix" not "Fixed").
 - Write sentences with proper punctuation.
 - Include a `Co-Authored-By:` field as the final line. Should include the model name and a no-reply address.
 - Avoid using `backticks` in commit messages as shell tools may evaluate them as subshell captures.
+
+## Delegated Review Flow
+
+Use this flow when multiple team members can access the same repository through branches or linked worktrees.
+
+Engineer flow:
+
+1. Implement the scoped change and run validation.
+2. Create a local/private review commit so the diff is hash-stable and hook-checked.
+3. Rebase the review branch onto the agreed base.
+4. Send the commit hash, changed-file summary, validation results, and any blockers/design questions.
+5. The reviewer approves the commit or requests changes.
+6. Amend or add a follow-up review commit when requested.
+
+Coordinator/tech-lead flow:
+
+1. Review the submitted commit and any included validation evidence.
+2. Merge approved review branches with `--no-ff` when preserving a delegated-work or lane boundary; this creates a clear integration point and avoids mutually rebasing branches into increasingly long histories.
+3. Merge/push only after explicit human approval.
+
+Prefer reviewing commits by hash. Use an explicit worktree path only for uncommitted diffs or commits in a different repository. Use patch artifacts only as a fallback when the reviewer cannot access the repository, branch, or worktree directly.
 
 # Project Notes
 
