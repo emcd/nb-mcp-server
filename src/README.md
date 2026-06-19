@@ -81,6 +81,18 @@ agent ergonomics, not for reproducing every native `nb` spelling:
 - `recurse` -> `recursive` on `nb.tasks`.
 - `task` -> `task_number` on `nb.do` and `nb.undo`.
 
+## Experimental First-Class Tools
+
+The server also registers direct first-class tools (`add`, `search`, `todo`,
+`list`) as experimental additive alternatives for commands with array arguments.
+These bypass the multiplexed `nb` command dispatch and expose typed schemas
+directly. The multiplexed `nb` tool remains the canonical surface. First-class
+tools may be removed in a future release without deprecation period.
+
+Note: MCP clients may display these tools with server-prefixed names (e.g.,
+`nb_add` instead of `add`). The server-registered names are `add`, `search`,
+`todo`, and `list`.
+
 ## Design Principle
 
 Prefer one obvious way for agents to say where new content goes. Preserve copied

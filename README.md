@@ -93,8 +93,8 @@ Add to your MCP client configuration (e.g., `.mcp.json`):
 
 ## Commands
 
-All commands are accessed via the `nb` tool with a `command` parameter to
-reduce the token footprint of the MCP server.
+The canonical access path is the multiplexed `nb` tool with a `command`
+parameter, which reduces the token footprint of the MCP server.
 The `args` field must be a JSON object. Stringified JSON payloads are rejected.
 Unknown `args` fields are rejected instead of ignored; use the exact command
 schema fields or documented aliases.
@@ -105,6 +105,14 @@ The `notebook` argument must be a bare notebook name. Use `folder` for folder
 paths and `id` / `selector` for note selectors. Existing-item commands accept
 copied selectors such as `myproject:coordination/mcp/1`, but reject conflicts
 with a separate `notebook` argument.
+
+### Experimental First-Class Tools
+
+Four commands are also available as direct first-class tools with typed
+schemas: add, search, todo, and list. These bypass the multiplexed
+command dispatch and may work around array-argument issues in some MCP
+clients. The multiplexed `nb` tool remains the canonical surface;
+first-class tools are additive and experimental.
 
 ### Notes
 
