@@ -96,6 +96,18 @@ if [[ "${1:-}" == *":todo" && "${2:-}" == "add" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "list" && "${3:-}" == "--type" && "${4:-}" == "folder" ]]; then
+  # list {notebook}: --type folder --no-color
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "folders ${notebook}"
+  exit 0
+fi
+
 if [[ "${1:-}" == "list" ]]; then
   # list {notebook}: or list {notebook}:{folder}/ --no-color --tags #tag
   selector="${2:-}"
@@ -105,6 +117,130 @@ if [[ "${1:-}" == "list" ]]; then
     exit 1
   fi
   echo "listed ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == *":" && "${2:-}" == "status" ]]; then
+  # {notebook}: status
+  notebook="${1%%:}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "status ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "notebooks" && "${2:-}" == "--no-color" ]]; then
+  echo "notebooks"
+  exit 0
+fi
+
+if [[ "${1:-}" == "edit" ]]; then
+  # edit selector --overwrite --content content --no-color
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "edited ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "delete" ]]; then
+  # delete selector --force
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "Deleted ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "move" ]]; then
+  # move source destination
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "Moved ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "do" ]]; then
+  # do selector
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "Completed ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "undo" ]]; then
+  # undo selector
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "Uncompleted ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "tasks" ]]; then
+  # tasks {notebook}: or tasks {notebook}:{folder}/ --no-color
+  selector="${2:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "tasks ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == *"bookmark" ]]; then
+  # {notebook}:bookmark or {notebook}:{folder}/bookmark
+  cmd="${1:-}"
+  # Extract notebook name (everything before the first colon)
+  notebook="${cmd%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "bookmarked ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "add" && "${2:-}" == "folder" ]]; then
+  # add folder {notebook}:{path}
+  selector="${3:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "Created folder ${notebook}"
+  exit 0
+fi
+
+if [[ "${1:-}" == *":import" ]]; then
+  # {notebook}:import source
+  notebook="${1%%:import}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "imported ${notebook}"
   exit 0
 fi
 

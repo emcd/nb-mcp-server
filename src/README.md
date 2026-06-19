@@ -81,17 +81,17 @@ agent ergonomics, not for reproducing every native `nb` spelling:
 - `recurse` -> `recursive` on `nb.tasks`.
 - `task` -> `task_number` on `nb.do` and `nb.undo`.
 
-## Experimental First-Class Tools
+## First-Class Tools
 
-The server also registers direct first-class tools (`add`, `search`, `todo`,
-`list`) as experimental additive alternatives for commands with array arguments.
-These bypass the multiplexed `nb` command dispatch and expose typed schemas
-directly. The multiplexed `nb` tool remains the canonical surface. First-class
-tools may be removed in a future release without deprecation period.
+The server also registers direct first-class tools for all subcommands:
+`status`, `notebooks`, `add`, `show`, `edit`, `delete`, `move`, `list`,
+`search`, `todo`, `do`, `undo`, `tasks`, `bookmark`, `folders`, `mkdir`,
+`import`. These bypass the multiplexed `nb` command dispatch and expose typed
+schemas directly. The multiplexed `nb` tool remains as the compact/backcompat
+compatibility surface.
 
 Note: MCP clients may display these tools with server-prefixed names (e.g.,
-`nb_add` instead of `add`). The server-registered names are `add`, `search`,
-`todo`, and `list`.
+`nb_add` instead of `add`). The server-registered names are unprefixed.
 
 ## Design Principle
 
