@@ -32,26 +32,10 @@ fn unique_temp_root(label: &str) -> PathBuf {
         .join(format!("{label}-{}-{nanos}", std::process::id()))
 }
 
-fn cleanup_stale_shims(parent: &std::path::Path) {
-    let Ok(entries) = fs::read_dir(parent) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if name.starts_with("nb-shim-") {
-            let _ = fs::remove_dir_all(path);
-        }
-    }
-}
-
 fn shim_env() -> ShimEnv {
     let root = unique_temp_root("nb-shim");
     let parent = root.parent().unwrap();
     fs::create_dir_all(parent).unwrap();
-    cleanup_stale_shims(parent);
     let shim_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(SHIM_DIR);
     let inherited_path = std::env::var("PATH").unwrap_or_default();
     let path = format!("{}:{inherited_path}", shim_dir.display());
