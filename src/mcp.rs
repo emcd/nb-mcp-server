@@ -45,6 +45,8 @@ struct HelpParams {
 #[serde(deny_unknown_fields)]
 struct StatusArgs {
     /// Notebook to check status for (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -77,6 +79,8 @@ struct ShowArgs {
     #[serde(alias = "selector")]
     id: String,
     /// Bare notebook name to read from (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -92,6 +96,8 @@ struct EditArgs {
     #[serde(default)]
     mode: EditMode,
     /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -102,6 +108,8 @@ struct DeleteArgs {
     #[serde(alias = "selector")]
     id: String,
     /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -116,6 +124,8 @@ struct MoveArgs {
     /// Examples: "new-folder/" (move to folder), "new-name.md" (rename), "folder/new-name.md" (move and rename).
     destination: String,
     /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -192,9 +202,12 @@ struct TaskIdArgs {
     #[serde(alias = "selector")]
     id: String,
     /// Optional task number within a todo item.
-    #[serde(alias = "task")]
+    #[serde(alias = "task", default)]
+    #[schemars(with = "u32")]
     task_number: Option<u32>,
     /// Bare notebook name containing the todo (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -202,15 +215,20 @@ struct TaskIdArgs {
 #[serde(deny_unknown_fields)]
 struct TasksArgs {
     /// Folder path to list todos from; do not include notebook-qualified syntax.
+    #[serde(default)]
+    #[schemars(with = "String")]
     folder: Option<String>,
     /// Optional status filter (`open` or `closed`).
-    #[serde(alias = "state")]
+    #[serde(alias = "state", default)]
+    #[schemars(with = "TaskStatus")]
     status: Option<TaskStatus>,
     /// Whether to include tasks from descendant folders.
     /// Defaults to true; set false for folder-only scope.
     #[serde(default = "default_true", alias = "recurse")]
     recursive: bool,
     /// Bare notebook name to list todos from (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -235,15 +253,23 @@ struct BookmarkArgs {
     /// URL to bookmark.
     url: String,
     /// Title for the bookmark.
+    #[serde(default)]
+    #[schemars(with = "String")]
     title: Option<String>,
     /// Tags to apply (without # prefix).
     #[serde(default)]
     tags: Vec<String>,
     /// Comment or description.
+    #[serde(default)]
+    #[schemars(with = "String")]
     comment: Option<String>,
     /// Folder path to create the bookmark in; do not include notebook-qualified syntax.
+    #[serde(default)]
+    #[schemars(with = "String")]
     folder: Option<String>,
     /// Bare notebook name to add bookmark to; do not include folders or selectors.
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -251,9 +277,12 @@ struct BookmarkArgs {
 #[serde(deny_unknown_fields)]
 struct FoldersArgs {
     /// Parent folder path to list; do not include notebook-qualified syntax.
-    #[serde(alias = "folder")]
+    #[serde(alias = "folder", default)]
+    #[schemars(with = "String")]
     parent: Option<String>,
     /// Bare notebook name to list folders from (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -264,6 +293,8 @@ struct MkdirArgs {
     #[serde(alias = "folder")]
     path: String,
     /// Bare notebook name to create folder in (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -273,13 +304,19 @@ struct ImportArgs {
     /// File path or URL to import.
     source: String,
     /// Folder path to import into; do not include notebook-qualified syntax.
+    #[serde(default)]
+    #[schemars(with = "String")]
     folder: Option<String>,
     /// Filename to use in notebook (uses original name if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
     filename: Option<String>,
     /// Convert HTML content to Markdown.
     #[serde(default)]
     convert: bool,
     /// Bare notebook name to import into; do not include folders or selectors.
+    #[serde(default)]
+    #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
@@ -291,7 +328,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = r#"nb note-taking tool. Invoke with {"command":"nb.<subcommand>","args":{...}} and pass args as a JSON object (stringified JSON is not accepted). Unknown args are rejected. This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. notebook must be a bare notebook name; use folder for folders and id/selector for notes. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."#
+        description = r#"nb note-taking tool. Invoke with {"command":"nb.<subcommand>","args":{...}} and pass args as a JSON object (stringified JSON is not accepted). Unknown args are rejected. This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. notebook must be a bare notebook name; use folder for folders and id/selector for notes. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, move, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."#
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -307,14 +344,13 @@ impl McpServer {
         help_tool(params)
     }
 
-    // First-class tools (experimental additive surface).
+    // First-class tools with typed schemas.
     // These bypass the multiplexed command dispatch and expose typed schemas
     // directly. Reuse existing arg structs and dispatch logic.
-    // See todos/mcp/36 and todos/mcp/38 for rationale.
 
     #[tool(
         name = "add",
-        description = "Create a new note. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them. This is an experimental first-class tool; the multiplexed nb tool with command nb.add provides equivalent behavior."
+        description = "Create a new note. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them."
     )]
     async fn nb_add(
         &self,
@@ -325,7 +361,7 @@ impl McpServer {
 
     #[tool(
         name = "search",
-        description = "Full-text search notes. queries[] is required (non-empty). mode: any (default, OR) or all (AND). This is an experimental first-class tool; the multiplexed nb tool with command nb.search provides equivalent behavior."
+        description = "Full-text search notes. queries[] is required (non-empty). mode: any (default, OR) or all (AND)."
     )]
     async fn nb_search(
         &self,
@@ -336,7 +372,7 @@ impl McpServer {
 
     #[tool(
         name = "todo",
-        description = "Create a todo item. The folder field is required by default; title is required; optional description/content and tasks[] create checklist items. This is an experimental first-class tool; the multiplexed nb tool with command nb.todo provides equivalent behavior."
+        description = "Create a todo item. The folder field is required by default; title is required; optional description/content and tasks[] create checklist items."
     )]
     async fn nb_todo(
         &self,
@@ -347,13 +383,147 @@ impl McpServer {
 
     #[tool(
         name = "list",
-        description = "List notes with optional filtering. Todo state is [ ] / [x] in titles; leading glyphs are item markers from nb. This is an experimental first-class tool; the multiplexed nb tool with command nb.list provides equivalent behavior."
+        description = "List notes with optional filtering. Todo state is [ ] / [x] in titles; leading glyphs are item markers from nb."
     )]
     async fn nb_list(
         &self,
         Parameters(args): Parameters<ListArgs>,
     ) -> Result<CallToolResult, McpError> {
         self.dispatch_list(args).await
+    }
+
+    #[tool(name = "status", description = "Show current notebook and stats.")]
+    async fn nb_status(
+        &self,
+        Parameters(args): Parameters<StatusArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_status(args).await
+    }
+
+    #[tool(
+        name = "notebooks",
+        description = "List available notebooks (list-only; notebook creation/deletion is not exposed via MCP)."
+    )]
+    async fn nb_notebooks(&self) -> Result<CallToolResult, McpError> {
+        self.dispatch_notebooks().await
+    }
+
+    #[tool(
+        name = "show",
+        description = "Read a note's content. Use id (alias: selector) to identify the note."
+    )]
+    async fn nb_show(
+        &self,
+        Parameters(args): Parameters<ShowArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_show(args).await
+    }
+
+    #[tool(
+        name = "edit",
+        description = "Update a note's content. Use id (alias: selector) to identify the note. mode: replace (default), append, or prepend."
+    )]
+    async fn nb_edit(
+        &self,
+        Parameters(args): Parameters<EditArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_edit(args).await
+    }
+
+    #[tool(
+        name = "delete",
+        description = "Delete a note. Use id (alias: selector) to identify the note."
+    )]
+    async fn nb_delete(
+        &self,
+        Parameters(args): Parameters<DeleteArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_delete(args).await
+    }
+
+    #[tool(
+        name = "move",
+        description = "Move or rename a note. Use id (alias: selector) to identify the note. destination can be a folder path (ending with /) or a new filename."
+    )]
+    async fn nb_move(
+        &self,
+        Parameters(args): Parameters<MoveArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_move(args).await
+    }
+
+    #[tool(
+        name = "do",
+        description = "Mark a todo as complete. Use id (alias: selector) to identify the todo. Optional task_number for checklist items."
+    )]
+    async fn nb_do(
+        &self,
+        Parameters(args): Parameters<TaskIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_do(args).await
+    }
+
+    #[tool(
+        name = "undo",
+        description = "Reopen a completed todo. Use id (alias: selector) to identify the todo. Optional task_number for checklist items."
+    )]
+    async fn nb_undo(
+        &self,
+        Parameters(args): Parameters<TaskIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_undo(args).await
+    }
+
+    #[tool(
+        name = "tasks",
+        description = "List todo items. Optional status filter (open or closed). recursive defaults to true; set false for folder-only scope."
+    )]
+    async fn nb_tasks(
+        &self,
+        Parameters(args): Parameters<TasksArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_tasks(args).await
+    }
+
+    #[tool(
+        name = "bookmark",
+        description = "Save a URL as a bookmark. The folder field is required by default."
+    )]
+    async fn nb_bookmark(
+        &self,
+        Parameters(args): Parameters<BookmarkArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_bookmark(args).await
+    }
+
+    #[tool(
+        name = "folders",
+        description = "List folders in notebook. Optional parent to list subfolders."
+    )]
+    async fn nb_folders(
+        &self,
+        Parameters(args): Parameters<FoldersArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_folders(args).await
+    }
+
+    #[tool(name = "mkdir", description = "Create a folder in the notebook.")]
+    async fn nb_mkdir(
+        &self,
+        Parameters(args): Parameters<MkdirArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_mkdir(args).await
+    }
+
+    #[tool(
+        name = "import",
+        description = "Import a file or URL into notebook. The folder field is required by default."
+    )]
+    async fn nb_import(
+        &self,
+        Parameters(args): Parameters<ImportArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_import(args).await
     }
 }
 
@@ -473,9 +643,9 @@ impl McpServer {
                 let args: SearchArgs = parse_or_return!(SearchArgs, call.args);
                 if args.queries.is_empty() {
                     return Ok(tool_error(
-                        "Invalid args for nb.search.\n\
+                        "Invalid args for search.\n\
                          Reason: queries must be a non-empty array.\n\
-                         Hint: pass args.queries as an array of one or more strings.",
+                         Hint: pass queries as an array of one or more strings.",
                     ));
                 }
                 self.nb
@@ -573,7 +743,7 @@ impl McpServer {
         }
     }
 
-    // First-class dispatch methods (experimental additive surface).
+    // First-class dispatch methods.
     // These reuse the same NbClient methods as dispatch_nb.
 
     async fn dispatch_add(&self, args: AddArgs) -> Result<CallToolResult, McpError> {
@@ -642,6 +812,152 @@ impl McpServer {
                 args.folder.as_deref(),
                 &args.tags,
                 args.limit,
+                args.notebook.as_deref(),
+            )
+            .await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_status(&self, args: StatusArgs) -> Result<CallToolResult, McpError> {
+        let result = self.nb.status(args.notebook.as_deref()).await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_notebooks(&self) -> Result<CallToolResult, McpError> {
+        let result = self.nb.notebooks().await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_show(&self, args: ShowArgs) -> Result<CallToolResult, McpError> {
+        let result = self.nb.show(&args.id, args.notebook.as_deref()).await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_edit(&self, args: EditArgs) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .edit(&args.id, &args.content, args.mode, args.notebook.as_deref())
+            .await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_delete(&self, args: DeleteArgs) -> Result<CallToolResult, McpError> {
+        let result = self.nb.delete(&args.id, args.notebook.as_deref()).await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_move(&self, args: MoveArgs) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .move_note(&args.id, &args.destination, args.notebook.as_deref())
+            .await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_do(&self, args: TaskIdArgs) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .do_task(&args.id, args.task_number, args.notebook.as_deref())
+            .await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_undo(&self, args: TaskIdArgs) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .undo_task(&args.id, args.task_number, args.notebook.as_deref())
+            .await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_tasks(&self, args: TasksArgs) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .tasks(
+                args.folder.as_deref(),
+                args.status,
+                args.recursive,
+                args.notebook.as_deref(),
+            )
+            .await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_bookmark(&self, args: BookmarkArgs) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .bookmark(
+                &args.url,
+                args.title.as_deref(),
+                &args.tags,
+                args.comment.as_deref(),
+                args.folder.as_deref(),
+                args.notebook.as_deref(),
+            )
+            .await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_folders(&self, args: FoldersArgs) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .folders(args.parent.as_deref(), args.notebook.as_deref())
+            .await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_mkdir(&self, args: MkdirArgs) -> Result<CallToolResult, McpError> {
+        let result = self.nb.mkdir(&args.path, args.notebook.as_deref()).await;
+        match result {
+            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
+        }
+    }
+
+    async fn dispatch_import(&self, args: ImportArgs) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .import(
+                &args.source,
+                args.folder.as_deref(),
+                args.filename.as_deref(),
+                args.convert,
                 args.notebook.as_deref(),
             )
             .await;
@@ -723,7 +1039,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "nb.tasks is recursive by default; pass recursive:false to limit to the selected folder.",
                 "In nb.list output, todo state comes from [ ] / [x] in titles; leading glyphs like ✔️ are item-type markers from nb.",
                 "Call help with query 'nb.<command>' for exact command schemas.",
-                "Experimental: first-class tools add, search, todo, list are available as direct alternatives for commands with array arguments. These expose typed schemas directly and may work around array-arg issues in some MCP clients. Some clients may display these with server-prefixed names (e.g., nb_add)."
+                "First-class tools: add, show, edit, delete, move, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, import, status, notebooks. These expose typed schemas directly and bypass the multiplexed command dispatch. Some clients may display these with server-prefixed names (e.g., nb_add)."
             ],
             "commands": [
                 {"command": "nb.status", "description": "Show current notebook and stats"},
@@ -745,10 +1061,23 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.import", "description": "Import a file or URL into notebook (folder required by default)"},
             ],
             "first_class_tools": [
-                {"tool": "add", "description": "Create a new note (experimental; typed schema, bypasses multiplex dispatch)"},
-                {"tool": "search", "description": "Full-text search notes (experimental; typed schema, bypasses multiplex dispatch)"},
-                {"tool": "todo", "description": "Create a todo item (experimental; typed schema, bypasses multiplex dispatch)"},
-                {"tool": "list", "description": "List notes (experimental; typed schema, bypasses multiplex dispatch)"},
+                {"tool": "status", "description": "Show current notebook and stats"},
+                {"tool": "notebooks", "description": "List available notebooks"},
+                {"tool": "add", "description": "Create a new note (folder required by default)"},
+                {"tool": "show", "description": "Read a note's content"},
+                {"tool": "edit", "description": "Update a note's content (replace by default)"},
+                {"tool": "delete", "description": "Delete a note"},
+                {"tool": "move", "description": "Move or rename a note"},
+                {"tool": "list", "description": "List notes with optional filtering"},
+                {"tool": "search", "description": "Full-text search notes (queries[] + mode any|all)"},
+                {"tool": "todo", "description": "Create a todo item (folder required by default)"},
+                {"tool": "do", "description": "Mark a todo as complete"},
+                {"tool": "undo", "description": "Reopen a completed todo"},
+                {"tool": "tasks", "description": "List todo items (optional status: open|closed)"},
+                {"tool": "bookmark", "description": "Save a URL as a bookmark (folder required by default)"},
+                {"tool": "folders", "description": "List folders in notebook"},
+                {"tool": "mkdir", "description": "Create a folder"},
+                {"tool": "import", "description": "Import a file or URL into notebook (folder required by default)"},
             ],
             "invoke": {
                 "tool": "nb",
@@ -840,26 +1169,83 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "List available notebooks (list-only; notebook creation/deletion is not exposed via MCP)",
             serde_json::json!({"type": "object", "properties": {}}),
         ),
-        // First-class tool help (experimental additive surface).
+        // First-class tool help.
+        "status" => first_class_help(
+            "status",
+            "Show current notebook and stats.",
+            json_schema_for::<StatusArgs>(),
+        ),
+        "notebooks" => first_class_help(
+            "notebooks",
+            "List available notebooks (list-only; notebook creation/deletion is not exposed via MCP).",
+            serde_json::json!({"type": "object", "properties": {}}),
+        ),
         "add" => first_class_help(
             "add",
-            "Create a new note. Experimental first-class tool with typed schema. Equivalent to nb.add via multiplexed nb tool.",
+            "Create a new note. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them.",
             json_schema_for::<AddArgs>(),
+        ),
+        "show" => first_class_help(
+            "show",
+            "Read a note's content.",
+            json_schema_for::<ShowArgs>(),
+        ),
+        "edit" => first_class_help(
+            "edit",
+            "Update a note's content (replace by default).",
+            json_schema_for::<EditArgs>(),
+        ),
+        "delete" => first_class_help("delete", "Delete a note.", json_schema_for::<DeleteArgs>()),
+        "move" => first_class_help(
+            "move",
+            "Move or rename a note.",
+            json_schema_for::<MoveArgs>(),
+        ),
+        "list" => first_class_help(
+            "list",
+            "List notes with optional filtering.",
+            json_schema_for::<ListArgs>(),
         ),
         "search" => first_class_help(
             "search",
-            "Full-text search notes. Experimental first-class tool with typed schema. Equivalent to nb.search via multiplexed nb tool.",
+            "Full-text search notes (queries[] required; mode: any default OR, mode: all for AND).",
             json_schema_for::<SearchArgs>(),
         ),
         "todo" => first_class_help(
             "todo",
-            "Create a todo item. Experimental first-class tool with typed schema. Equivalent to nb.todo via multiplexed nb tool.",
+            "Create a todo item. The folder field is required by default; title is required.",
             json_schema_for::<TodoArgs>(),
         ),
-        "list" => first_class_help(
-            "list",
-            "List notes with optional filtering. Experimental first-class tool with typed schema. Equivalent to nb.list via multiplexed nb tool.",
-            json_schema_for::<ListArgs>(),
+        "do" => first_class_help(
+            "do",
+            "Mark a todo as complete (optional task_number).",
+            json_schema_for::<TaskIdArgs>(),
+        ),
+        "undo" => first_class_help(
+            "undo",
+            "Reopen a completed todo (optional task_number).",
+            json_schema_for::<TaskIdArgs>(),
+        ),
+        "tasks" => first_class_help(
+            "tasks",
+            "List todo items (optional status: open|closed, recursive defaults to true).",
+            json_schema_for::<TasksArgs>(),
+        ),
+        "bookmark" => first_class_help(
+            "bookmark",
+            "Save a URL as a bookmark. The folder field is required by default.",
+            json_schema_for::<BookmarkArgs>(),
+        ),
+        "folders" => first_class_help(
+            "folders",
+            "List folders in notebook.",
+            json_schema_for::<FoldersArgs>(),
+        ),
+        "mkdir" => first_class_help("mkdir", "Create a folder.", json_schema_for::<MkdirArgs>()),
+        "import" => first_class_help(
+            "import",
+            "Import a file or URL into notebook. The folder field is required by default.",
+            json_schema_for::<ImportArgs>(),
         ),
         _ => {
             return Err(McpError::invalid_params(
@@ -889,8 +1275,6 @@ fn first_class_help(tool: &str, description: &str, schema: serde_json::Value) ->
         "tool": tool,
         "description": description,
         "args_schema": schema,
-        "experimental": true,
-        "note": "This is an experimental first-class tool with a typed schema. It provides equivalent behavior to the multiplexed nb tool but may work around array-argument issues in some MCP clients.",
         "invoke": {
             "tool": tool,
             "params": {},

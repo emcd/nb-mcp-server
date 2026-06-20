@@ -106,13 +106,13 @@ paths and `id` / `selector` for note selectors. Existing-item commands accept
 copied selectors such as `myproject:coordination/mcp/1`, but reject conflicts
 with a separate `notebook` argument.
 
-### Experimental First-Class Tools
+### First-Class Tools
 
-Four commands are also available as direct first-class tools with typed
-schemas: add, search, todo, and list. These bypass the multiplexed
-command dispatch and may work around array-argument issues in some MCP
-clients. The multiplexed `nb` tool remains the canonical surface;
-first-class tools are additive and experimental.
+All commands are also available as direct first-class tools with typed
+schemas: `add`, `show`, `edit`, `delete`, `move`, `list`, `search`, `todo`,
+`do`, `undo`, `tasks`, `bookmark`, `folders`, `mkdir`, `import`, `status`,
+`notebooks`. These bypass the multiplexed command dispatch. The multiplexed
+`nb` tool remains as the compact/backcompat compatibility surface.
 
 ### Notes
 

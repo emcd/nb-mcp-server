@@ -221,7 +221,7 @@ fn nb_tool_defaults_null_and_empty_args_objects() {
     let mut server = start_server(&shim);
     for args in [Value::Null, json!({})] {
         let response = server.call_nb("nb.status", args);
-        assert!(tool_text(&response).contains("unsupported nb command"));
+        assert!(tool_text(&response).contains("status"));
     }
 }
 
@@ -356,7 +356,7 @@ fn help_tool_describes_routing_rules() {
     );
 }
 
-// First-class tool tests (experimental additive surface).
+// First-class tool tests.
 
 #[test]
 fn first_class_search_accepts_array_queries() {
@@ -462,38 +462,56 @@ fn help_tool_describes_first_class_tools() {
     let response = server.call_help("nb");
     let help = tool_json(&response);
     let first_class = help["first_class_tools"].as_array().unwrap();
-    assert!(first_class.len() == 4);
-    assert!(
-        first_class
-            .iter()
-            .any(|t| t["tool"].as_str().unwrap() == "add")
-    );
-    assert!(
-        first_class
-            .iter()
-            .any(|t| t["tool"].as_str().unwrap() == "search")
-    );
-    assert!(
-        first_class
-            .iter()
-            .any(|t| t["tool"].as_str().unwrap() == "todo")
-    );
-    assert!(
-        first_class
-            .iter()
-            .any(|t| t["tool"].as_str().unwrap() == "list")
-    );
+    assert_eq!(first_class.len(), 17);
+    let tool_names: Vec<&str> = first_class
+        .iter()
+        .map(|t| t["tool"].as_str().unwrap())
+        .collect();
+    assert!(tool_names.contains(&"add"));
+    assert!(tool_names.contains(&"search"));
+    assert!(tool_names.contains(&"todo"));
+    assert!(tool_names.contains(&"list"));
+    assert!(tool_names.contains(&"status"));
+    assert!(tool_names.contains(&"notebooks"));
+    assert!(tool_names.contains(&"show"));
+    assert!(tool_names.contains(&"edit"));
+    assert!(tool_names.contains(&"delete"));
+    assert!(tool_names.contains(&"move"));
+    assert!(tool_names.contains(&"do"));
+    assert!(tool_names.contains(&"undo"));
+    assert!(tool_names.contains(&"tasks"));
+    assert!(tool_names.contains(&"bookmark"));
+    assert!(tool_names.contains(&"folders"));
+    assert!(tool_names.contains(&"mkdir"));
+    assert!(tool_names.contains(&"import"));
 }
 
 #[test]
 fn help_tool_provides_first_class_tool_schemas() {
     let shim = shim_env();
     let mut server = start_server(&shim);
-    for tool in ["add", "search", "todo", "list"] {
+    for tool in [
+        "add",
+        "search",
+        "todo",
+        "list",
+        "status",
+        "notebooks",
+        "show",
+        "edit",
+        "delete",
+        "move",
+        "do",
+        "undo",
+        "tasks",
+        "bookmark",
+        "folders",
+        "mkdir",
+        "import",
+    ] {
         let response = server.call_help(tool);
         let help = tool_json(&response);
         assert!(help["args_schema"].is_object(), "tool: {tool}");
-        assert!(help["experimental"].as_bool().unwrap(), "tool: {tool}");
     }
 }
 
@@ -504,10 +522,30 @@ fn tools_list_exposes_first_class_tools() {
     let response = server.list_tools();
     let tools = response["result"]["tools"].as_array().unwrap();
     let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert!(tool_names.contains(&"add"), "tools: {tool_names:?}");
-    assert!(tool_names.contains(&"search"), "tools: {tool_names:?}");
-    assert!(tool_names.contains(&"todo"), "tools: {tool_names:?}");
-    assert!(tool_names.contains(&"list"), "tools: {tool_names:?}");
+    for tool in [
+        "add",
+        "search",
+        "todo",
+        "list",
+        "status",
+        "notebooks",
+        "show",
+        "edit",
+        "delete",
+        "move",
+        "do",
+        "undo",
+        "tasks",
+        "bookmark",
+        "folders",
+        "mkdir",
+        "import",
+    ] {
+        assert!(
+            tool_names.contains(&tool),
+            "tool {tool} not found in {tool_names:?}"
+        );
+    }
 }
 
 #[test]
@@ -646,4 +684,259 @@ fn first_class_todo_accepts_content_alias_for_description() {
     );
     assert!(!is_tool_error(&response), "response: {response}");
     assert!(tool_text(&response).contains("Added:"));
+}
+
+// Tests for new first-class tools (status, notebooks, show, edit, delete, move, do, undo, tasks, bookmark, folders, mkdir, import).
+
+#[test]
+fn first_class_status_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("status", json!({}));
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("status"));
+}
+
+#[test]
+fn first_class_notebooks_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("notebooks", json!({}));
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("notebooks"));
+}
+
+#[test]
+fn first_class_show_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "show",
+        json!({"id": format!("{TEST_NOTEBOOK}:session-notes/test.md")}),
+    );
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("shown"));
+}
+
+#[test]
+fn first_class_edit_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content."
+        }),
+    );
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("edited"));
+}
+
+#[test]
+fn first_class_delete_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "delete",
+        json!({"id": format!("{TEST_NOTEBOOK}:session-notes/test.md")}),
+    );
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("Deleted"));
+}
+
+#[test]
+fn first_class_move_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "move",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "destination": "archive/"
+        }),
+    );
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("Moved"));
+}
+
+#[test]
+fn first_class_do_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "do",
+        json!({"id": format!("{TEST_NOTEBOOK}:session-notes/test.md")}),
+    );
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("Completed"));
+}
+
+#[test]
+fn first_class_undo_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "undo",
+        json!({"id": format!("{TEST_NOTEBOOK}:session-notes/test.md")}),
+    );
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("Uncompleted"));
+}
+
+#[test]
+fn first_class_tasks_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("tasks", json!({}));
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("tasks"));
+}
+
+#[test]
+fn first_class_bookmark_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "bookmark",
+        json!({
+            "folder": "session-notes",
+            "url": "https://example.com",
+            "title": "Test Bookmark"
+        }),
+    );
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("bookmarked"));
+}
+
+#[test]
+fn first_class_folders_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("folders", json!({}));
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("folders"));
+}
+
+#[test]
+fn first_class_mkdir_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("mkdir", json!({"path": "test-folder"}));
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("Created folder"));
+}
+
+#[test]
+fn first_class_import_works() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "import",
+        json!({
+            "folder": "session-notes",
+            "source": "https://example.com/test.md"
+        }),
+    );
+    assert!(!is_tool_error(&response), "response: {response}");
+    assert!(tool_text(&response).contains("imported"));
+}
+
+#[test]
+fn first_class_tasks_status_schema_is_plain_type() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.list_tools();
+    let tools = response["result"]["tools"].as_array().unwrap();
+    let tasks_tool = tools
+        .iter()
+        .find(|t| t["name"].as_str().unwrap() == "tasks")
+        .unwrap();
+    let schema = &tasks_tool["inputSchema"];
+    let status_prop = &schema["properties"]["status"];
+    // status should be a plain string enum or $ref, not a nullable union
+    assert!(
+        status_prop.get("anyOf").is_none() && status_prop.get("oneOf").is_none(),
+        "tasks.status should not be a nullable union"
+    );
+    // status should be a string type or $ref to TaskStatus
+    let is_string_type = status_prop["type"].as_str() == Some("string");
+    let has_ref = status_prop["$ref"].is_string();
+    assert!(
+        is_string_type || has_ref,
+        "tasks.status should be string type or $ref, got: {status_prop}"
+    );
+    // status should not be in required array
+    let required = schema["required"].as_array();
+    if let Some(req) = required {
+        assert!(
+            !req.iter().any(|r| r.as_str() == Some("status")),
+            "tasks.status should not be required"
+        );
+    }
+}
+
+// Cross-surface equivalence tests: verify multiplexed nb and first-class tools
+// produce equivalent behavior for the same parameters.
+
+#[test]
+fn cross_surface_status_equivalence() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    // Read-only: both should return status output
+    let multiplexed = server.call_nb("nb.status", json!({}));
+    let first_class = server.call_first_class("status", json!({}));
+    assert!(!is_tool_error(&multiplexed), "multiplexed: {multiplexed}");
+    assert!(!is_tool_error(&first_class), "first_class: {first_class}");
+    assert_eq!(tool_text(&multiplexed), tool_text(&first_class));
+}
+
+#[test]
+fn cross_surface_list_equivalence() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    // Read-only: both should return list output
+    let multiplexed = server.call_nb("nb.list", json!({}));
+    let first_class = server.call_first_class("list", json!({}));
+    assert!(!is_tool_error(&multiplexed), "multiplexed: {multiplexed}");
+    assert!(!is_tool_error(&first_class), "first_class: {first_class}");
+    assert_eq!(tool_text(&multiplexed), tool_text(&first_class));
+}
+
+#[test]
+fn cross_surface_add_equivalence() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    // Mutation: both should invoke the same nb command shape
+    let args = json!({
+        "folder": "session-notes",
+        "title": "Cross-surface test",
+        "content": "Testing equivalence."
+    });
+    let multiplexed = server.call_nb("nb.add", args.clone());
+    let first_class = server.call_first_class("add", args);
+    assert!(!is_tool_error(&multiplexed), "multiplexed: {multiplexed}");
+    assert!(!is_tool_error(&first_class), "first_class: {first_class}");
+    // Both should produce "Added:" output (same shim response)
+    assert!(tool_text(&multiplexed).contains("Added:"));
+    assert!(tool_text(&first_class).contains("Added:"));
+}
+
+#[test]
+fn cross_surface_todo_equivalence() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    // Mutation: both should invoke the same nb command shape
+    let args = json!({
+        "folder": "session-notes",
+        "title": "Cross-surface todo",
+        "tasks": ["step1", "step2"]
+    });
+    let multiplexed = server.call_nb("nb.todo", args.clone());
+    let first_class = server.call_first_class("todo", args);
+    assert!(!is_tool_error(&multiplexed), "multiplexed: {multiplexed}");
+    assert!(!is_tool_error(&first_class), "first_class: {first_class}");
+    // Both should produce "Added:" output (same shim response)
+    assert!(tool_text(&multiplexed).contains("Added:"));
+    assert!(tool_text(&first_class).contains("Added:"));
 }
