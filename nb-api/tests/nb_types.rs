@@ -1,4 +1,4 @@
-use nb_mcp_server::nb::{EditMode, SearchMode, TaskStatus};
+use nb_api::{EditMode, SearchMode, TaskStatus};
 
 #[test]
 fn edit_mode_deserializes_lowercase_values() {
@@ -24,12 +24,4 @@ fn search_mode_deserializes_lowercase_values() {
     assert_eq!(mode, SearchMode::Any);
     let mode: SearchMode = serde_json::from_str("\"all\"").unwrap();
     assert_eq!(mode, SearchMode::All);
-}
-
-#[test]
-fn re_exported_types_resolve_from_nb_module() {
-    // Verify backward compatibility: nb_mcp_server::nb re-exports work.
-    let _: EditMode = serde_json::from_str("\"replace\"").unwrap();
-    let _: SearchMode = serde_json::from_str("\"any\"").unwrap();
-    let _: TaskStatus = serde_json::from_str("\"open\"").unwrap();
 }

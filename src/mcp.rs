@@ -323,7 +323,8 @@ struct ImportArgs {
 #[tool_router]
 impl McpServer {
     fn new(config: &Config) -> Result<Self> {
-        let nb = NbClient::new(config)?;
+        let nb_config = config.to_nb_api_config();
+        let nb = NbClient::new(&nb_config)?;
         Ok(Self { nb })
     }
 

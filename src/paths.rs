@@ -4,7 +4,7 @@
 //! When running inside a Git repository, logs are named after the project and worktree
 //! to avoid collisions between multiple MCP server instances.
 
-use std::{path::PathBuf, process::Command, sync::OnceLock};
+use std::{path::PathBuf, sync::OnceLock};
 
 /// Cached log path (computed once per process).
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -46,10 +46,10 @@ fn compute_log_path() -> PathBuf {
 /// These are the same for non-worktree repos.
 fn detect_git_info() -> Option<(String, String)> {
     // Get current worktree root
-    let current_root = git_rev_parse(&["--show-toplevel"])?;
+    let current_root = nb_api::git_rev_parse(&["--show-toplevel"])?;
 
     // Get common git directory (may be relative)
-    let git_common_dir = git_rev_parse(&["--git-common-dir"])?;
+    let git_common_dir = nb_api::git_rev_parse(&["--git-common-dir"])?;
 
     // Resolve git_common_dir relative to current_root if it's relative
     let git_common_dir = if git_common_dir.is_relative() {
@@ -81,28 +81,6 @@ fn detect_git_info() -> Option<(String, String)> {
         .map(sanitize_name)?;
 
     Some((project_name, worktree_name))
-}
-
-/// Run `git rev-parse` with the given arguments and return the output as a path.
-fn git_rev_parse(args: &[&str]) -> Option<PathBuf> {
-    let output = Command::new("git")
-        .args(["rev-parse"])
-        .args(args)
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8(output.stdout).ok()?;
-    let path = stdout.trim();
-
-    if path.is_empty() {
-        return None;
-    }
-
-    Some(PathBuf::from(path))
 }
 
 /// Sanitize a name for use in a filename.

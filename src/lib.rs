@@ -29,3 +29,24 @@ impl Default for Config {
         }
     }
 }
+
+impl Config {
+    /// Convert to an `nb_api::Config`, resolving `NB_MCP_NOTEBOOK` as fallback.
+    ///
+    /// Resolution order for notebook name:
+    /// 1. `self.notebook` (CLI --notebook)
+    /// 2. `NB_MCP_NOTEBOOK` env var
+    /// 3. Git-derived fallback (handled by `nb_api::NbClient::new`)
+    pub fn to_nb_api_config(&self) -> nb_api::Config {
+        let notebook = self
+            .notebook
+            .clone()
+            .or_else(|| std::env::var("NB_MCP_NOTEBOOK").ok());
+        nb_api::Config {
+            notebook,
+            create_notebook: self.create_notebook,
+            allow_top_level_notes: self.allow_top_level_notes,
+            disable_git_signing: self.commit_signing_disabled,
+        }
+    }
+}
