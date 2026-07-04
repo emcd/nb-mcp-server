@@ -2,7 +2,7 @@
 - [x] 1.1 Create `nb-api` crate directory and `Cargo.toml`
 - [x] 1.2 Add workspace member to root `Cargo.toml`
 - [x] 1.3 Add dual path+version dependency from `nb-mcp-server` to `nb-api`
-- [ ] 1.4 Verify/reserve `nb-api` crate name on crates.io
+- [x] 1.4 Verify/reserve `nb-api` crate name on crates.io
 
 ## 2. Code Extraction
 - [x] 2.1 Move `src/nb.rs` to `nb-api/src/lib.rs`
