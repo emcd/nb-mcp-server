@@ -153,17 +153,17 @@ Use consistent tags for discoverability:
 
 ## OpenSpec Instructions
 
-Workflow Guide: @openspec/AGENTS.md
+This project uses OpenSpec 1.x (OPSX). Workflow Guide: @documentation/agents/openspec.md
 
-Always open `openspec/AGENTS.md` when the request:
+Always open `documentation/agents/openspec.md` when the request:
 - Mentions planning or proposals (words like proposal, spec, change, plan).
 - Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work.
 - Sounds ambiguous and you need the authoritative spec before coding.
 
-Use `openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
+Quick orientation:
+- Workflow actions are the `/opsx:*` commands (`propose`, `explore`, `new`, `continue`, `ff`, `apply`, `verify`, `sync`, `archive`).
+- The `openspec` CLI provides state: `list`, `status`, `instructions`, `validate --all --strict`.
+- Project configuration lives in `openspec/config.yaml` (default schema: `spec-driven`).
 
 # Commits
 
