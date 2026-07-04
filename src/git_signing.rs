@@ -18,6 +18,7 @@ pub async fn disable_commit_signing(config: &Config) -> Result<Option<PathBuf>> 
 
 async fn disable_signing_for_path(path: &Path) -> Result<PathBuf> {
     let root = resolve_git_root(path).await?;
+    ensure_notebook_git_root(path, &root)?;
     apply_signing_config(&root).await?;
     Ok(root)
 }
@@ -47,6 +48,29 @@ async fn resolve_git_root(path: &Path) -> Result<PathBuf> {
         ));
     }
     Ok(PathBuf::from(root))
+}
+
+fn ensure_notebook_git_root(path: &Path, root: &Path) -> Result<()> {
+    let path = path.canonicalize().with_context(|| {
+        format!(
+            "canonicalize notebook path before applying signing config: {}",
+            path.display()
+        )
+    })?;
+    let root = root.canonicalize().with_context(|| {
+        format!(
+            "canonicalize notebook git root before applying signing config: {}",
+            root.display()
+        )
+    })?;
+    if path == root {
+        return Ok(());
+    }
+    Err(anyhow!(
+        "refusing to disable signing outside notebook repository: notebook path {} resolves to ancestor git repository {}",
+        path.display(),
+        root.display()
+    ))
 }
 
 async fn apply_signing_config(path: &Path) -> Result<()> {

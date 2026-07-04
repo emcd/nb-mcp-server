@@ -41,6 +41,7 @@ if [[ "${1:-}" == "notebooks" && "${2:-}" == "add" ]]; then
     exit 1
   fi
   mkdir -p "${root}/notebooks/${notebook}"
+  git -C "${root}/notebooks/${notebook}" init --quiet
   touch "${root}/signing-overrides-detected"
   echo "Added notebook ${notebook}"
   exit 0
