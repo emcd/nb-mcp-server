@@ -3,14 +3,14 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow};
 use tokio::process::Command;
 
-use crate::{Config, nb::NbClient};
+use crate::Config;
 
 pub async fn disable_commit_signing(config: &Config) -> Result<Option<PathBuf>> {
-    let mut config = config.clone();
-    config.commit_signing_disabled = true;
-    let nb_client = NbClient::new(&config).context("create nb client for commit signing update")?;
+    let nb_config = config.to_nb_api_config();
+    let nb_client =
+        nb_api::NbClient::new(&nb_config).context("create nb client for commit signing update")?;
     let path = nb_client
-        .notebook_path(config.notebook.as_deref())
+        .notebook_path(nb_config.notebook.as_deref())
         .await
         .context("fetch notebook path for commit signing update")?;
     disable_signing_for_path(&path).await.map(Some)

@@ -1,0 +1,40 @@
+[package]
+name = "nb-api"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Typed Rust interface to the nb note-taking CLI (subprocess wrapper: escaping, validation, output parsing)"
+license = "Apache-2.0"
+repository = "https://github.com/emcd/nb-mcp-server"
+homepage = "https://github.com/emcd/nb-mcp-server"
+documentation = "https://docs.rs/nb-api"
+readme = "README.md"
+keywords = ["nb", "notes", "cli", "llm"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dev-dependencies]
+serde_json = "1.0"
+
+[features]
+default = []
+schemars = ["dep:schemars"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# JSON Schema generation (optional, for MCP tool schemas)
+schemars = { version = "1.0", optional = true }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+
+# Text processing
+regex = "1.0"
