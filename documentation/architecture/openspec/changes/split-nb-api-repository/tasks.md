@@ -14,7 +14,7 @@
 
 - [x] 3.1 Remove `nb-api/` workspace member from `emcd/nb-mcp-server`
 - [x] 3.2 Switch `nb-api` dependency from path+version to crates.io version only (`nb-api = "0.1"`)
-- [x] 3.3 Update `nb-mcp-server` README to reference `emcd/nb-api` repository (N/A — root README has no nb-api references)
+- [x] 3.3 Update `nb-mcp-server` README to reference `emcd/nb-api` repository
 - [x] 3.4 Run full test suite against published `nb-api 0.1.1` crate
 - [x] 3.5 Verify `cargo package` succeeds for `nb-mcp-server`
 
@@ -22,4 +22,4 @@
 
 - [x] 4.1 Tag `v0.1.1` in `emcd/nb-api` and publish to crates.io
 - [ ] 4.2 Tag new `nb-mcp-server` release (v0.14.0 or similar) after migration
-- [ ] 4.3 Update any cross-references between repos (README links, documentation)
+- [x] 4.3 Update any cross-references between repos (README links, documentation)
