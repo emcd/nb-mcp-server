@@ -1,5 +1,4 @@
 [workspace]
-members = ["nb-api"]
 resolver = "3"
 
 [package]
@@ -29,7 +28,7 @@ path = "src/main.rs"
 
 [dependencies]
 # nb API primitives
-nb-api = { path = "nb-api", version = "0.1.0", features = ["schemars"] }
+nb-api = { version = "0.1", features = ["schemars"] }
 
 # MCP server framework
 rmcp = { version = "1.6.0", features = ["transport-io"] }

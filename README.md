@@ -246,6 +246,10 @@ Use `--no-commit-signing` to disable commit and tag signing in the notebook
 repository. The server updates the notebook repository's local Git config so
 signing prompts do not block MCP tool calls.
 
+## Related Projects
+
+- [nb-api](https://github.com/emcd/nb-api) — Typed Rust interface to the `nb` CLI. Published on [crates.io](https://crates.io/crates/nb-api). This MCP server depends on `nb-api` for all note-taking primitives.
+
 ## Contributing
 
 See the contribution guide and code of conduct:
