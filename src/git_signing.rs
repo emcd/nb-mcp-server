@@ -24,7 +24,9 @@ async fn disable_signing_for_path(path: &Path) -> Result<PathBuf> {
 }
 
 async fn resolve_git_root(path: &Path) -> Result<PathBuf> {
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    scrub_git_env(&mut command);
+    let output = command
         .arg("-C")
         .arg(path)
         .args(["rev-parse", "--show-toplevel"])
@@ -80,7 +82,9 @@ async fn apply_signing_config(path: &Path) -> Result<()> {
 }
 
 async fn run_git_config(path: &Path, key: &str, value: &str) -> Result<()> {
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    scrub_git_env(&mut command);
+    let output = command
         .arg("-C")
         .arg(path)
         .arg("config")
@@ -99,6 +103,14 @@ async fn run_git_config(path: &Path, key: &str, value: &str) -> Result<()> {
         "git config failed for {key} in notebook repository: {}",
         message.trim()
     ))
+}
+
+fn scrub_git_env(command: &mut Command) {
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(key);
+        }
+    }
 }
 
 fn select_output<'a>(stderr: &'a str, stdout: &'a str) -> &'a str {

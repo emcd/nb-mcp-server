@@ -97,3 +97,34 @@ fn show_paths_without_no_commit_signing_fails_on_initialization() {
     let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap();
     assert!(calls.contains(&format!("notebooks add {TEST_NOTEBOOK}")));
 }
+
+#[test]
+fn show_paths_ignores_inherited_git_repository_environment() {
+    let shim = shim_env();
+    let redirected_git_dir = shim.root.join("redirected.git");
+    let redirected_index = shim.root.join("redirected.index");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_nb-mcp"))
+        .arg("--show-paths")
+        .arg("--notebook")
+        .arg(TEST_NOTEBOOK)
+        .arg("--no-commit-signing")
+        .env("NB_SHIM_ROOT", &shim.root)
+        .env("PATH", &shim.path)
+        .env("GIT_DIR", &redirected_git_dir)
+        .env("GIT_INDEX_FILE", &redirected_index)
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "stderr: {stderr}");
+    assert!(
+        shim.root
+            .join("notebooks")
+            .join(TEST_NOTEBOOK)
+            .join(".git")
+            .is_dir()
+    );
+    assert!(!redirected_git_dir.exists());
+    assert!(!redirected_index.exists());
+}

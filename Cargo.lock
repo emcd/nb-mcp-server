@@ -373,9 +373,9 @@ dependencies = [
 
 [[package]]
 name = "nb-api"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54a4ad807ae57b2f5d315f362800f44721daaa42023494d79d59f2ba8978a3bb"
+checksum = "2934ace03ba60ad1986c0a77f151e0975223750047229def7a3d4122edf8cc8e"
 dependencies = [
  "anyhow",
  "regex",
