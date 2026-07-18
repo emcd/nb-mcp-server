@@ -12,7 +12,7 @@ use tracing::{info, warn};
 
 use crate::Config;
 use crate::git_signing;
-use crate::nb::{EditMode, NbClient, SearchMode, TaskStatus};
+use crate::nb::{EditMode, NbClient, NbError, SearchMode, TaskStatus};
 
 #[derive(Clone)]
 struct McpServer {
@@ -754,10 +754,7 @@ impl McpServer {
             }
         };
 
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     // First-class dispatch methods.
@@ -774,10 +771,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_search(&self, args: SearchArgs) -> Result<CallToolResult, McpError> {
@@ -798,10 +792,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_todo(&self, args: TodoArgs) -> Result<CallToolResult, McpError> {
@@ -816,10 +807,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_list(&self, args: ListArgs) -> Result<CallToolResult, McpError> {
@@ -832,34 +820,22 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_status(&self, args: StatusArgs) -> Result<CallToolResult, McpError> {
         let result = self.nb.show_notebook_status(args.notebook.as_deref()).await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_notebooks(&self) -> Result<CallToolResult, McpError> {
         let result = self.nb.list_notebooks().await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_show(&self, args: ShowArgs) -> Result<CallToolResult, McpError> {
         let result = self.nb.show_note(&args.id, args.notebook.as_deref()).await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_edit(&self, args: EditArgs) -> Result<CallToolResult, McpError> {
@@ -867,10 +843,7 @@ impl McpServer {
             .nb
             .edit_note(&args.id, &args.content, args.mode, args.notebook.as_deref())
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_delete(&self, args: DeleteArgs) -> Result<CallToolResult, McpError> {
@@ -878,10 +851,7 @@ impl McpServer {
             .nb
             .delete_note(&args.id, args.notebook.as_deref())
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_move(&self, args: MoveArgs) -> Result<CallToolResult, McpError> {
@@ -889,10 +859,7 @@ impl McpServer {
             .nb
             .move_note(&args.id, &args.destination, args.notebook.as_deref())
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_do(&self, args: TaskIdArgs) -> Result<CallToolResult, McpError> {
@@ -900,10 +867,7 @@ impl McpServer {
             .nb
             .mark_task_done(&args.id, args.task_number, args.notebook.as_deref())
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_undo(&self, args: TaskIdArgs) -> Result<CallToolResult, McpError> {
@@ -911,10 +875,7 @@ impl McpServer {
             .nb
             .unmark_task_done(&args.id, args.task_number, args.notebook.as_deref())
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_tasks(&self, args: TasksArgs) -> Result<CallToolResult, McpError> {
@@ -927,10 +888,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_bookmark(&self, args: BookmarkArgs) -> Result<CallToolResult, McpError> {
@@ -945,10 +903,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_folders(&self, args: FoldersArgs) -> Result<CallToolResult, McpError> {
@@ -956,10 +911,7 @@ impl McpServer {
             .nb
             .list_folders(args.parent.as_deref(), args.notebook.as_deref())
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_mkdir(&self, args: MkdirArgs) -> Result<CallToolResult, McpError> {
@@ -967,10 +919,7 @@ impl McpServer {
             .nb
             .add_folder(&args.path, args.notebook.as_deref())
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 
     async fn dispatch_import(&self, args: ImportArgs) -> Result<CallToolResult, McpError> {
@@ -984,10 +933,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        match result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
-            Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
-        }
+        Ok(nb_error_to_call_tool_result(result))
     }
 }
 
@@ -1070,6 +1016,36 @@ fn parse_edit_args(value: serde_json::Value) -> Result<EditArgs, String> {
 
 fn tool_error(message: impl Into<String>) -> CallToolResult {
     CallToolResult::error(vec![Content::text(message.into())])
+}
+
+fn nb_error_to_call_tool_result(result: Result<String, NbError>) -> CallToolResult {
+    match result {
+        Ok(output) => CallToolResult::success(vec![Content::text(output)]),
+        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+    }
+}
+
+fn present_nb_error(err: &NbError) -> String {
+    match err {
+        NbError::UnsupportedShowTarget {
+            selector,
+            actual_type,
+        } => format!(
+            "Invalid args for show.\n\
+             Reason: selector `{selector}` resolved to a non-textual type \
+             ({actual_type}); `show` reads text notes only.\n\
+             Hint: for folders use `folders` or `list`; for other non-text \
+             types there is no MCP read operation in this release."
+        ),
+        NbError::DuplicateTitleHeading { title, heading } => format!(
+            "Invalid args for add.\n\
+             Reason: title `{title}` duplicates the first H1 heading in content \
+             (`{heading}`); both produce a top-level title and double-render.\n\
+             Hint: remove the duplicate H1 from content, or omit the separate \
+             `title` field."
+        ),
+        other => other.to_string(),
+    }
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
