@@ -1176,3 +1176,59 @@ fn edit_overwrite_success_is_parity_across_surfaces() {
         "direct and multiplexed edit success responses must match"
     );
 }
+
+// Empty-list passthrough: the MCP layer must pass `list` and `folders`
+// output through verbatim. Sanitization of `nb` native CLI hint blocks
+// is the responsibility of `nb-api`, exercised at the API layer.
+
+// `tests/support/nb` echoes `<verb> ${notebook}\n` (echo appends a
+// trailing newline) for `list` and `folders`. The MCP layer must pass
+// the bytes through unchanged on every surface. Asserts use the exact
+// shim output, not `starts_with`, so appended, truncated, or
+// reformatted output fails the regression.
+const EXPECTED_LIST: &str = "listed mcp-stdio-testbook\n";
+const EXPECTED_FOLDERS: &str = "folders mcp-stdio-testbook\n";
+
+fn assert_passthrough_exact(surface: &str, response: &Value, expected: &str) {
+    assert!(
+        !is_rejection(response),
+        "[{surface}] should pass through shim output, got: {response}"
+    );
+    let output = tool_text(response);
+    assert_eq!(
+        output, expected,
+        "[{surface}] should pass the exact shim output through (including trailing newline); got: {output:?}"
+    );
+}
+
+#[test]
+fn first_class_list_passes_exact_shim_output() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("list", json!({}));
+    assert_passthrough_exact("first-class list", &response, EXPECTED_LIST);
+}
+
+#[test]
+fn multiplexed_list_passes_exact_shim_output() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_nb("nb.list", json!({}));
+    assert_passthrough_exact("multiplexed nb.list", &response, EXPECTED_LIST);
+}
+
+#[test]
+fn first_class_folders_passes_exact_shim_output() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("folders", json!({}));
+    assert_passthrough_exact("first-class folders", &response, EXPECTED_FOLDERS);
+}
+
+#[test]
+fn multiplexed_folders_passes_exact_shim_output() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_nb("nb.folders", json!({}));
+    assert_passthrough_exact("multiplexed nb.folders", &response, EXPECTED_FOLDERS);
+}
