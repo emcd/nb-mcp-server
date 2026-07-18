@@ -199,6 +199,14 @@ fn is_tool_error(response: &Value) -> bool {
     response["result"]["isError"].as_bool().unwrap_or(false)
 }
 
+fn is_protocol_error(response: &Value) -> bool {
+    response["error"].is_object()
+}
+
+fn is_rejection(response: &Value) -> bool {
+    is_tool_error(response) || is_protocol_error(response)
+}
+
 #[test]
 fn nb_tool_rejects_non_object_args_payloads() {
     let shim = shim_env();
@@ -940,4 +948,152 @@ fn cross_surface_todo_equivalence() {
     // Both should produce "Added:" output (same shim response)
     assert!(tool_text(&multiplexed).contains("Added:"));
     assert!(tool_text(&first_class).contains("Added:"));
+}
+
+// Edit-mode contract regressions: edit.mode is required; canonical
+// overwrite is advertised; legacy replace remains compatible input.
+
+#[test]
+fn edit_mode_is_required_in_first_class_schema() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let tools = server.list_tools();
+    let tools = tools["result"]["tools"].as_array().unwrap();
+    let edit_tool = tools
+        .iter()
+        .find(|t| t["name"].as_str() == Some("edit"))
+        .expect("edit tool should exist");
+    let required = edit_tool["inputSchema"]["required"]
+        .as_array()
+        .expect("edit schema should expose required list");
+    let required_fields: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+    assert!(
+        required_fields.contains(&"mode"),
+        "edit.mode should be required, got required: {required_fields:?}"
+    );
+
+    let schema = &edit_tool["inputSchema"];
+    let defs = &schema["$defs"];
+    let mode_ref = schema["properties"]["mode"]["$ref"]
+        .as_str()
+        .expect("mode should $ref a $defs entry");
+    let mode_def_name = mode_ref.trim_start_matches("#/$defs/");
+    let mode_enum = &defs[mode_def_name]["oneOf"];
+    let variants: Vec<String> = mode_enum
+        .as_array()
+        .expect("EditMode oneOf should be an array")
+        .iter()
+        .filter_map(|entry| entry["const"].as_str().map(str::to_string))
+        .collect();
+    for required_variant in ["overwrite", "append", "prepend"] {
+        assert!(
+            variants.iter().any(|v| v == required_variant),
+            "edit.mode should advertise {required_variant:?}, got variants: {variants:?}"
+        );
+    }
+    assert!(
+        !variants.iter().any(|v| v == "replace"),
+        "edit.mode must not advertise legacy replace, got variants: {variants:?}"
+    );
+}
+
+#[test]
+fn edit_mode_is_required_in_multiplexed_help() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let help = server.call_help("nb.edit");
+    assert!(!is_tool_error(&help), "help: {help}");
+    let help_text = tool_text(&help);
+    assert!(
+        help_text.contains("mode required"),
+        "nb.edit help should describe mode as required, got: {help_text}"
+    );
+    for variant in ["overwrite", "append", "prepend"] {
+        assert!(
+            help_text.contains(variant),
+            "nb.edit help should name {variant:?}, got: {help_text}"
+        );
+    }
+}
+
+#[test]
+fn first_class_edit_rejects_missing_mode_before_invoking_nb() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content.",
+        }),
+    );
+    assert!(
+        is_rejection(&response),
+        "expected rejection when mode is missing, got: {response}"
+    );
+    let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap_or_default();
+    assert!(
+        !calls.lines().any(|line| line.starts_with("edit ")),
+        "edit must not be invoked when mode is missing; calls: {calls}"
+    );
+}
+
+#[test]
+fn multiplexed_edit_rejects_missing_mode_before_invoking_nb() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_nb(
+        "nb.edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content.",
+        }),
+    );
+    assert!(
+        is_rejection(&response),
+        "expected rejection when mode is missing, got: {response}"
+    );
+    let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap_or_default();
+    assert!(
+        !calls.lines().any(|line| line.starts_with("edit ")),
+        "edit must not be invoked when mode is missing; calls: {calls}"
+    );
+}
+
+#[test]
+fn edit_accepts_legacy_replace_input() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content.",
+            "mode": "replace",
+        }),
+    );
+    assert!(
+        !is_rejection(&response),
+        "legacy mode:replace must remain compatible, got: {response}"
+    );
+    assert!(tool_text(&response).contains("edited"));
+}
+
+#[test]
+fn multiplexed_edit_accepts_legacy_replace_input() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_nb(
+        "nb.edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content.",
+            "mode": "replace",
+        }),
+    );
+    assert!(
+        !is_rejection(&response),
+        "legacy mode:replace must remain compatible, got: {response}"
+    );
+    assert!(tool_text(&response).contains("edited"));
 }
