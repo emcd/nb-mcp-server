@@ -120,7 +120,7 @@ schemas: `add`, `show`, `edit`, `delete`, `move`, `list`, `search`, `todo`,
 |---------|-------------|---------------|
 | `nb.add` | Create a note | `title`, `content`, `tags[]`, `folder` required by default |
 | `nb.show` | Read a note | `id` (alias: `selector`) |
-| `nb.edit` | Update a note | `id` (alias: `selector`), `content`, `mode` (`replace` default, `append`, `prepend`) |
+| `nb.edit` | Update a note | `id` (alias: `selector`), `content`, `mode` (required: `overwrite`, `append`, `prepend`) |
 | `nb.delete` | Delete a note | `id` (alias: `selector`) |
 | `nb.move` | Move or rename a note | `id` (alias: `selector`), `destination` |
 | `nb.list` | List notes | `folder`, `tags[]`, `limit` (`[ ]` / `[x]` indicate todo status; leading glyphs are item markers) |
@@ -187,6 +187,34 @@ Example categories and prefixes:
 | Task type | `task-<type>` | `task-bug`, `task-feature` |
 | Status | `status-<state>` | `status-review`, `status-blocked` |
 
+## Edit Behavior
+
+`nb.edit` requires an explicit `mode` value. The schema advertises
+`overwrite`, `append`, and `prepend`. `overwrite` replaces every byte
+of the note body (it is destructive). The legacy input value
+`replace` is still accepted through the upstream `nb-api` serde
+alias and is interpreted as `overwrite`.
+
+Omitting `mode` is rejected before `nb` is invoked. Clients that
+relied on the destructive default must now send `mode: "overwrite"`
+explicitly.
+
+## Typed Error Surfaces
+
+`nb-api 0.2` introduces two typed failures that the MCP layer
+translates into actionable diagnostics on both the multiplexed
+`nb.*` surface and the first-class tool surface:
+
+- `show` on a non-text selector (folder, archive, image, ...): the
+  error names the selector and the actual non-text type, states
+  that `show` reads text notes only, and points the caller at
+  `folders`/`list`. The server never silently re-routes `show` to
+  another command.
+- `add` with both a `title` and a `content` whose first nonblank
+  line is an H1 that duplicates the title: the error names the
+  title and the detected heading and tells the caller to remove
+  the duplicate H1 or omit the separate `title`.
+
 ## Configuration
 
 ### Notebook Resolution
@@ -248,7 +276,7 @@ signing prompts do not block MCP tool calls.
 
 ## Related Projects
 
-- [nb-api](https://github.com/emcd/nb-api) — Typed Rust interface to the `nb` CLI. Published on [crates.io](https://crates.io/crates/nb-api). This MCP server depends on `nb-api` for all note-taking primitives.
+- [nb-api](https://github.com/emcd/nb-api) — Typed Rust interface to the `nb` CLI. Published on [crates.io](https://crates.io/crates/nb-api). This MCP server depends on `nb-api` for all note-taking primitives; the `edit` vocabulary, typed `show`/`add` errors, and sanitized empty listings all come from `nb-api 0.2`.
 
 ## Contributing
 
