@@ -21,5 +21,5 @@
 ## 4. Release and Documentation
 
 - [x] 4.1 Tag `v0.1.1` in `emcd/nb-api` and publish to crates.io
-- [ ] 4.2 Tag new `nb-mcp-server` release (v0.14.0 or similar) after migration
+- [x] 4.2 Transfer the broader `nb-api 0.2.0` cutover and `nb-mcp-server v0.14.0` release to the planned Nbspec proposal (`nb-mcp-server:todos/mcp/54`)
 - [x] 4.3 Update any cross-references between repos (README links, documentation)

@@ -1,7 +1,7 @@
 # notebook-resolution Specification
 
 ## Purpose
-TBD - created by archiving change update-notebook-resolution. Update Purpose after archive.
+Define how the server selects, validates, and creates the notebook used by MCP operations.
 ## Requirements
 ### Requirement: Notebook resolution order
 The system SHALL resolve the notebook name in this order:
@@ -39,3 +39,17 @@ Git config updates to the resolved notebook repository only.
 - **AND** no notebook can be resolved
 - **THEN** the system reports an error and performs no update
 
+### Requirement: Automatic notebook creation
+When the resolved notebook does not exist, the system SHALL create it before
+executing the requested command, unless auto-creation is disabled.
+
+#### Scenario: Create missing notebook
+- **WHEN** the notebook name is resolved
+- **AND** the notebook does not exist
+- **THEN** the system creates the notebook and continues the request
+
+#### Scenario: Auto-creation disabled
+- **WHEN** the notebook name is resolved
+- **AND** the notebook does not exist
+- **AND** auto-creation is disabled
+- **THEN** the system returns an error instructing how to create or enable it

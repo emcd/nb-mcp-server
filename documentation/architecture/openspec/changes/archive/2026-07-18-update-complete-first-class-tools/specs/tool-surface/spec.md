@@ -32,6 +32,8 @@ surface. Both surfaces SHALL produce identical results for equivalent operations
 - **WHEN** a client invokes a mutation tool (e.g., `add`) directly and also via multiplexed `nb` with identical parameters
 - **THEN** both apply the same validation, routing, and nb CLI invocation
 
+## ADDED Requirements
+
 ### Requirement: MiMo/Xiaomi schema compatibility
 All first-class tool parameter schemas SHALL render `Option<T>` fields as plain
 single types (e.g., `"type": "string"`) rather than nullable unions
