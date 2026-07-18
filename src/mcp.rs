@@ -594,13 +594,13 @@ impl McpServer {
         let result = match subcommand {
             "status" => {
                 let args: StatusArgs = parse_or_return!(StatusArgs, call.args);
-                self.nb.status(args.notebook.as_deref()).await
+                self.nb.show_notebook_status(args.notebook.as_deref()).await
             }
-            "notebooks" => self.nb.notebooks().await,
+            "notebooks" => self.nb.list_notebooks().await,
             "add" => {
                 let args: AddArgs = parse_or_return!(AddArgs, call.args);
                 self.nb
-                    .add(
+                    .add_note(
                         args.title.as_deref(),
                         &args.content,
                         &args.tags,
@@ -611,17 +611,19 @@ impl McpServer {
             }
             "show" => {
                 let args: ShowArgs = parse_or_return!(ShowArgs, call.args);
-                self.nb.show(&args.id, args.notebook.as_deref()).await
+                self.nb.show_note(&args.id, args.notebook.as_deref()).await
             }
             "edit" => {
                 let args: EditArgs = parse_or_return!(EditArgs, call.args);
                 self.nb
-                    .edit(&args.id, &args.content, args.mode, args.notebook.as_deref())
+                    .edit_note(&args.id, &args.content, args.mode, args.notebook.as_deref())
                     .await
             }
             "delete" => {
                 let args: DeleteArgs = parse_or_return!(DeleteArgs, call.args);
-                self.nb.delete(&args.id, args.notebook.as_deref()).await
+                self.nb
+                    .delete_note(&args.id, args.notebook.as_deref())
+                    .await
             }
             "move" => {
                 let args: MoveArgs = parse_or_return!(MoveArgs, call.args);
@@ -632,7 +634,7 @@ impl McpServer {
             "list" => {
                 let args: ListArgs = parse_or_return!(ListArgs, call.args);
                 self.nb
-                    .list(
+                    .list_notes(
                         args.folder.as_deref(),
                         &args.tags,
                         args.limit,
@@ -650,7 +652,7 @@ impl McpServer {
                     ));
                 }
                 self.nb
-                    .search(
+                    .search_notes(
                         &args.queries,
                         args.mode,
                         &args.tags,
@@ -662,7 +664,7 @@ impl McpServer {
             "todo" => {
                 let args: TodoArgs = parse_or_return!(TodoArgs, call.args);
                 self.nb
-                    .todo(
+                    .add_todo(
                         &args.title,
                         args.description.as_deref(),
                         &args.tasks,
@@ -675,19 +677,19 @@ impl McpServer {
             "do" => {
                 let args: TaskIdArgs = parse_or_return!(TaskIdArgs, call.args);
                 self.nb
-                    .do_task(&args.id, args.task_number, args.notebook.as_deref())
+                    .mark_task_done(&args.id, args.task_number, args.notebook.as_deref())
                     .await
             }
             "undo" => {
                 let args: TaskIdArgs = parse_or_return!(TaskIdArgs, call.args);
                 self.nb
-                    .undo_task(&args.id, args.task_number, args.notebook.as_deref())
+                    .unmark_task_done(&args.id, args.task_number, args.notebook.as_deref())
                     .await
             }
             "tasks" => {
                 let args: TasksArgs = parse_or_return!(TasksArgs, call.args);
                 self.nb
-                    .tasks(
+                    .list_tasks(
                         args.folder.as_deref(),
                         args.status,
                         args.recursive,
@@ -698,7 +700,7 @@ impl McpServer {
             "bookmark" => {
                 let args: BookmarkArgs = parse_or_return!(BookmarkArgs, call.args);
                 self.nb
-                    .bookmark(
+                    .add_bookmark(
                         &args.url,
                         args.title.as_deref(),
                         &args.tags,
@@ -711,17 +713,19 @@ impl McpServer {
             "folders" => {
                 let args: FoldersArgs = parse_or_return!(FoldersArgs, call.args);
                 self.nb
-                    .folders(args.parent.as_deref(), args.notebook.as_deref())
+                    .list_folders(args.parent.as_deref(), args.notebook.as_deref())
                     .await
             }
             "mkdir" => {
                 let args: MkdirArgs = parse_or_return!(MkdirArgs, call.args);
-                self.nb.mkdir(&args.path, args.notebook.as_deref()).await
+                self.nb
+                    .add_folder(&args.path, args.notebook.as_deref())
+                    .await
             }
             "import" => {
                 let args: ImportArgs = parse_or_return!(ImportArgs, call.args);
                 self.nb
-                    .import(
+                    .import_note(
                         &args.source,
                         args.folder.as_deref(),
                         args.filename.as_deref(),
@@ -750,7 +754,7 @@ impl McpServer {
     async fn dispatch_add(&self, args: AddArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .add(
+            .add_note(
                 args.title.as_deref(),
                 &args.content,
                 &args.tags,
@@ -774,7 +778,7 @@ impl McpServer {
         }
         let result = self
             .nb
-            .search(
+            .search_notes(
                 &args.queries,
                 args.mode,
                 &args.tags,
@@ -791,7 +795,7 @@ impl McpServer {
     async fn dispatch_todo(&self, args: TodoArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .todo(
+            .add_todo(
                 &args.title,
                 args.description.as_deref(),
                 &args.tasks,
@@ -809,7 +813,7 @@ impl McpServer {
     async fn dispatch_list(&self, args: ListArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .list(
+            .list_notes(
                 args.folder.as_deref(),
                 &args.tags,
                 args.limit,
@@ -823,7 +827,7 @@ impl McpServer {
     }
 
     async fn dispatch_status(&self, args: StatusArgs) -> Result<CallToolResult, McpError> {
-        let result = self.nb.status(args.notebook.as_deref()).await;
+        let result = self.nb.show_notebook_status(args.notebook.as_deref()).await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
             Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
@@ -831,7 +835,7 @@ impl McpServer {
     }
 
     async fn dispatch_notebooks(&self) -> Result<CallToolResult, McpError> {
-        let result = self.nb.notebooks().await;
+        let result = self.nb.list_notebooks().await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
             Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
@@ -839,7 +843,7 @@ impl McpServer {
     }
 
     async fn dispatch_show(&self, args: ShowArgs) -> Result<CallToolResult, McpError> {
-        let result = self.nb.show(&args.id, args.notebook.as_deref()).await;
+        let result = self.nb.show_note(&args.id, args.notebook.as_deref()).await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
             Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
@@ -849,7 +853,7 @@ impl McpServer {
     async fn dispatch_edit(&self, args: EditArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .edit(&args.id, &args.content, args.mode, args.notebook.as_deref())
+            .edit_note(&args.id, &args.content, args.mode, args.notebook.as_deref())
             .await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
@@ -858,7 +862,10 @@ impl McpServer {
     }
 
     async fn dispatch_delete(&self, args: DeleteArgs) -> Result<CallToolResult, McpError> {
-        let result = self.nb.delete(&args.id, args.notebook.as_deref()).await;
+        let result = self
+            .nb
+            .delete_note(&args.id, args.notebook.as_deref())
+            .await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
             Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
@@ -879,7 +886,7 @@ impl McpServer {
     async fn dispatch_do(&self, args: TaskIdArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .do_task(&args.id, args.task_number, args.notebook.as_deref())
+            .mark_task_done(&args.id, args.task_number, args.notebook.as_deref())
             .await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
@@ -890,7 +897,7 @@ impl McpServer {
     async fn dispatch_undo(&self, args: TaskIdArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .undo_task(&args.id, args.task_number, args.notebook.as_deref())
+            .unmark_task_done(&args.id, args.task_number, args.notebook.as_deref())
             .await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
@@ -901,7 +908,7 @@ impl McpServer {
     async fn dispatch_tasks(&self, args: TasksArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .tasks(
+            .list_tasks(
                 args.folder.as_deref(),
                 args.status,
                 args.recursive,
@@ -917,7 +924,7 @@ impl McpServer {
     async fn dispatch_bookmark(&self, args: BookmarkArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .bookmark(
+            .add_bookmark(
                 &args.url,
                 args.title.as_deref(),
                 &args.tags,
@@ -935,7 +942,7 @@ impl McpServer {
     async fn dispatch_folders(&self, args: FoldersArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .folders(args.parent.as_deref(), args.notebook.as_deref())
+            .list_folders(args.parent.as_deref(), args.notebook.as_deref())
             .await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
@@ -944,7 +951,10 @@ impl McpServer {
     }
 
     async fn dispatch_mkdir(&self, args: MkdirArgs) -> Result<CallToolResult, McpError> {
-        let result = self.nb.mkdir(&args.path, args.notebook.as_deref()).await;
+        let result = self
+            .nb
+            .add_folder(&args.path, args.notebook.as_deref())
+            .await;
         match result {
             Ok(output) => Ok(CallToolResult::success(vec![Content::text(output)])),
             Err(err) => Ok(CallToolResult::error(vec![Content::text(err.to_string())])),
@@ -954,7 +964,7 @@ impl McpServer {
     async fn dispatch_import(&self, args: ImportArgs) -> Result<CallToolResult, McpError> {
         let result = self
             .nb
-            .import(
+            .import_note(
                 &args.source,
                 args.folder.as_deref(),
                 args.filename.as_deref(),
