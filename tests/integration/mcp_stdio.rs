@@ -186,6 +186,16 @@ fn tool_text(response: &Value) -> String {
         .to_string()
 }
 
+fn rejection_text(response: &Value) -> Option<String> {
+    if let Some(text) = response["result"]["content"][0]["text"].as_str() {
+        return Some(text.to_string());
+    }
+    if let Some(message) = response["error"]["message"].as_str() {
+        return Some(message.to_string());
+    }
+    None
+}
+
 fn tool_json(response: &Value) -> Value {
     let content = &response["result"]["content"][0];
     if let Some(value) = content.get("json") {
@@ -1096,4 +1106,73 @@ fn multiplexed_edit_accepts_legacy_replace_input() {
         "legacy mode:replace must remain compatible, got: {response}"
     );
     assert!(tool_text(&response).contains("edited"));
+}
+
+// Cross-surface equivalence for edit behavior: every edit contract,
+// observed through both surfaces, must produce identical wording.
+
+#[test]
+fn edit_mode_rejection_is_parity_across_surfaces() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let payload = json!({
+        "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+        "content": "Updated content.",
+    });
+    let first_class = server.call_first_class("edit", payload.clone());
+    let multiplexed = server.call_nb("nb.edit", payload);
+    assert!(
+        is_rejection(&first_class),
+        "first-class edit should reject missing mode, got: {first_class}"
+    );
+    assert!(
+        is_rejection(&multiplexed),
+        "multiplexed edit should reject missing mode, got: {multiplexed}"
+    );
+    let first_class_text = rejection_text(&first_class).unwrap_or_else(|| {
+        panic!("direct edit rejection produced no diagnostic text: {first_class}")
+    });
+    let multiplexed_text = rejection_text(&multiplexed).unwrap_or_else(|| {
+        panic!("multiplexed edit rejection produced no diagnostic text: {multiplexed}")
+    });
+    assert!(
+        !first_class_text.is_empty() && !multiplexed_text.is_empty(),
+        "both surfaces should produce a missing-mode diagnostic, got direct={first_class_text:?} multiplexed={multiplexed_text:?}"
+    );
+    assert_eq!(
+        first_class_text, multiplexed_text,
+        "direct and multiplexed missing-mode errors must produce identical wording"
+    );
+    for value in ["overwrite", "append", "prepend"] {
+        assert!(
+            first_class_text.contains(value),
+            "missing-mode diagnostic should name {value}, got: {first_class_text}"
+        );
+    }
+}
+
+#[test]
+fn edit_overwrite_success_is_parity_across_surfaces() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let payload = json!({
+        "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+        "content": "Updated content.",
+        "mode": "overwrite",
+    });
+    let first_class = server.call_first_class("edit", payload.clone());
+    let multiplexed = server.call_nb("nb.edit", payload);
+    assert!(
+        !is_rejection(&first_class),
+        "first-class overwrite should succeed, got: {first_class}"
+    );
+    assert!(
+        !is_rejection(&multiplexed),
+        "multiplexed overwrite should succeed, got: {multiplexed}"
+    );
+    assert_eq!(
+        tool_text(&first_class),
+        tool_text(&multiplexed),
+        "direct and multiplexed edit success responses must match"
+    );
 }
