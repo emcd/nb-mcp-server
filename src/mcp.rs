@@ -84,7 +84,7 @@ struct ShowArgs {
     notebook: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct EditArgs {
     /// Notebook selector, note ID, filename, or title to edit; not a filesystem path.
@@ -92,8 +92,7 @@ struct EditArgs {
     id: String,
     /// New content for the note.
     content: String,
-    /// Edit mode: `replace` (default), `append`, or `prepend`.
-    #[serde(default)]
+    /// Edit mode: `overwrite` (replaces every byte of the note body), `append`, or `prepend`.
     mode: EditMode,
     /// Bare notebook name containing the note (uses default if not specified).
     #[serde(default)]
@@ -422,12 +421,22 @@ impl McpServer {
 
     #[tool(
         name = "edit",
-        description = "Update a note's content. Use id (alias: selector) to identify the note. mode: replace (default), append, or prepend."
+        description = "Update a note's content. Use id (alias: selector) to identify the note. mode is required: overwrite (replaces every byte of the note body), append, or prepend.",
+        input_schema = ::std::sync::Arc::new(
+            json_schema_for::<EditArgs>()
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+        ),
     )]
     async fn nb_edit(
         &self,
-        Parameters(args): Parameters<EditArgs>,
+        Parameters(args): Parameters<serde_json::Value>,
     ) -> Result<CallToolResult, McpError> {
+        let args = match parse_edit_args(args) {
+            Ok(args) => args,
+            Err(message) => return Ok(tool_error(message)),
+        };
         self.dispatch_edit(args).await
     }
 
@@ -614,7 +623,10 @@ impl McpServer {
                 self.nb.show_note(&args.id, args.notebook.as_deref()).await
             }
             "edit" => {
-                let args: EditArgs = parse_or_return!(EditArgs, call.args);
+                let args: EditArgs = match parse_edit_args(call.args) {
+                    Ok(args) => args,
+                    Err(message) => return Ok(tool_error(message)),
+                };
                 self.nb
                     .edit_note(&args.id, &args.content, args.mode, args.notebook.as_deref())
                     .await
@@ -1012,6 +1024,50 @@ fn parse_args<T: serde::de::DeserializeOwned + Default>(
     })
 }
 
+fn parse_edit_args(value: serde_json::Value) -> Result<EditArgs, String> {
+    if value.is_null() {
+        return Err("Invalid args for edit.\n\
+             Reason: args is null.\n\
+             Hint: choose overwrite, append, or prepend for mode; id and content are required."
+            .to_string());
+    }
+    let value = match value {
+        serde_json::Value::Object(map) => {
+            if map.is_empty() {
+                return Err("Invalid args for edit.\n\
+                     Reason: mode is required.\n\
+                     Hint: choose overwrite, append, or prepend for mode."
+                    .to_string());
+            }
+            serde_json::Value::Object(map)
+        }
+        other => {
+            return Err(format!(
+                "Invalid args for edit.\n\
+                 Reason: args must be a JSON object, got {}.\n\
+                 Hint: pass args as a JSON object (not a stringified JSON payload).",
+                json_type_name(&other)
+            ));
+        }
+    };
+
+    serde_json::from_value::<EditArgs>(value).map_err(|err| {
+        if err.to_string().contains("missing field `mode`") {
+            "Invalid args for edit.\n\
+             Reason: mode is required.\n\
+             Hint: choose overwrite, append, or prepend for mode."
+                .to_string()
+        } else {
+            format!(
+                "Invalid args for edit.\n\
+                 Reason: {}.\n\
+                 Hint: choose overwrite, append, or prepend for mode.",
+                err
+            )
+        }
+    })
+}
+
 fn tool_error(message: impl Into<String>) -> CallToolResult {
     CallToolResult::error(vec![Content::text(message.into())])
 }
@@ -1057,7 +1113,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"command": "nb.notebooks", "description": "List available notebooks (list-only; no add/delete in MCP)"},
                 {"command": "nb.add", "description": "Create a new note (folder required by default)"},
                 {"command": "nb.show", "description": "Read a note's content"},
-                {"command": "nb.edit", "description": "Update a note's content (replace by default)"},
+                {"command": "nb.edit", "description": "Update a note's content (mode required: overwrite, append, or prepend)"},
                 {"command": "nb.delete", "description": "Delete a note"},
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
@@ -1076,7 +1132,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"tool": "notebooks", "description": "List available notebooks"},
                 {"tool": "add", "description": "Create a new note (folder required by default)"},
                 {"tool": "show", "description": "Read a note's content"},
-                {"tool": "edit", "description": "Update a note's content (replace by default)"},
+                {"tool": "edit", "description": "Update a note's content (mode required: overwrite, append, or prepend)"},
                 {"tool": "delete", "description": "Delete a note"},
                 {"tool": "move", "description": "Move or rename a note"},
                 {"tool": "list", "description": "List notes with optional filtering"},
@@ -1112,7 +1168,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.edit" => command_help(
             "nb.edit",
-            "Update a note's content (replace by default)",
+            "Update a note's content (mode required: overwrite, append, or prepend).",
             json_schema_for::<EditArgs>(),
         ),
         "nb.delete" => command_help(
@@ -1203,7 +1259,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "edit" => first_class_help(
             "edit",
-            "Update a note's content (replace by default).",
+            "Update a note's content (mode required: overwrite, append, or prepend).",
             json_schema_for::<EditArgs>(),
         ),
         "delete" => first_class_help("delete", "Delete a note.", json_schema_for::<DeleteArgs>()),

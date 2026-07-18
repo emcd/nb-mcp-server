@@ -726,7 +726,8 @@ fn first_class_edit_works() {
         "edit",
         json!({
             "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-            "content": "Updated content."
+            "content": "Updated content.",
+            "mode": "overwrite",
         }),
     );
     assert!(!is_tool_error(&response), "response: {response}");
