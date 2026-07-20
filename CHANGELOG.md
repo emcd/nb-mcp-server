@@ -14,19 +14,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added actionable MCP diagnostics for folder/non-text `show` targets and
   duplicate title headings, with matching behavior across first-class and
   multiplexed tools.
-- Added real-`nb` integration coverage using the public `NbTestEnv` fixture and
-  pinned `nb` 7.24.0 in CI.
 
 ### Changed
 
-- Upgraded to published `nb-api` 0.2.1 and its descriptive Rust method names.
 - Required callers to choose an explicit `edit` mode. The advertised
   whole-note mode is `overwrite`; `append` and `prepend` remain available, and
   `replace` remains accepted as a compatibility alias.
-- Moved the reusable `nb` client implementation into the independently
-  published `nb-api` crate while preserving the `nb_mcp_server::nb` re-export
-  location.
-- Passed sanitized list and folder output through both MCP surfaces verbatim.
+- Removed native usage hints from empty list and folder responses.
 
 ### Fixed
 
@@ -44,16 +38,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added direct tools for note, todo, organization, status, and notebook
   operations.
 
-### Fixed
-
-- Removed a race in the startup commit-signing test shim.
-
 ## [0.12.0] - 2026-06-02
 
 ### Changed
 
 - Rejected unknown MCP command arguments instead of silently ignoring them.
-- Moved MCP behavior coverage into the integration harness.
 
 ## [0.11.0] - 2026-06-01
 
@@ -67,9 +56,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
-- Upgraded the `rmcp` dependency.
 - Aligned todo creation arguments and documentation with the native `nb` CLI.
-- Updated release attestation and crate metadata links.
 
 ## [0.9.0] - 2026-04-04
 
@@ -84,13 +71,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 
 - Added checklist items to todo creation and recursive task listing by default.
-- Added shim-based startup signing regression coverage.
 
 ### Changed
 
 - Removed the confirmation field from delete operations.
 - Normalized folder creation paths and clarified todo status output.
-- Restricted crates.io package contents to an explicit allowlist.
 
 ## [0.7.0] - 2026-02-24
 
@@ -116,14 +101,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 
 - Added `--show-paths` for inspecting resolved notebook and state paths.
-- Added automated MCP registry publication support.
 
 ## [0.4.0] - 2026-02-05
 
 ### Changed
 
 - Created missing notebooks automatically by default.
-- Expanded notebook auto-creation and usage guidance.
 
 ## [0.3.0] - 2026-02-04
 
@@ -134,8 +117,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 
 - Hardened notebook resolution and the MCP tool surface.
-- Renamed notebook configuration and moved contribution documentation to
-  Markdown.
+- Renamed notebook configuration for clearer project routing.
 
 ## [0.2.0] - 2026-01-31
 
@@ -145,8 +127,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   CLI.
 - Added note, todo, bookmark, folder, notebook, import, move, and search
   operations with explicit notebook routing.
-- Added XDG-compliant logging, ANSI stripping, CI, release binaries, and
-  crates.io trusted publishing.
+- Added XDG-compliant logging, ANSI stripping, and prebuilt release binaries.
 
 [Unreleased]: https://github.com/emcd/nb-mcp-server/compare/v0.14.0...HEAD
 [0.14.0]: https://github.com/emcd/nb-mcp-server/compare/v0.13.0...v0.14.0
