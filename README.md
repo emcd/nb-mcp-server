@@ -30,6 +30,8 @@ From [crates.io](https://crates.io/crates/nb-mcp-server):
 cargo install nb-mcp-server
 ```
 
+See the [changelog](CHANGELOG.md) for release history and upgrade notes.
+
 Or download a prebuilt binary from [GitHub Releases](https://github.com/emcd/nb-mcp-server/releases).
 
 ### Build from Source
