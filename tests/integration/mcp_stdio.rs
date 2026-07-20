@@ -5,6 +5,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -13,6 +14,7 @@ use serde_json::{Value, json};
 const SHIM_DIR: &str = "tests/support";
 const TEST_NOTEBOOK: &str = "mcp-stdio-testbook";
 const TEMP_TEST_ROOT: &str = ".auxiliary/temporary/tests";
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct ShimEnv {
     root: PathBuf,
@@ -44,9 +46,10 @@ fn unique_temp_root(label: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
+    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(TEMP_TEST_ROOT)
-        .join(format!("{label}-{}-{nanos}", std::process::id()))
+        .join(format!("{label}-{}-{nanos}-{sequence}", std::process::id()))
 }
 
 fn shim_env() -> ShimEnv {

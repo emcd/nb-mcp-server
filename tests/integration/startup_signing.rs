@@ -4,12 +4,14 @@ use std::{
     fs,
     path::PathBuf,
     process::Command,
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 const SHIM_DIR: &str = "tests/support";
 const TEST_NOTEBOOK: &str = "shim-signing-testbook";
 const TEMP_TEST_ROOT: &str = ".auxiliary/temporary/tests";
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct ShimEnv {
     root: PathBuf,
@@ -27,9 +29,10 @@ fn unique_temp_root(label: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
+    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(TEMP_TEST_ROOT)
-        .join(format!("{label}-{}-{nanos}", std::process::id()))
+        .join(format!("{label}-{}-{nanos}-{sequence}", std::process::id()))
 }
 
 fn shim_env() -> ShimEnv {
