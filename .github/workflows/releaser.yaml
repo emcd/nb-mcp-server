@@ -37,6 +37,23 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install nb
+        # Hermetic install: clone a pinned nb tag into a temp dir,
+        # symlink into a private bin dir, and append that bin dir
+        # to PATH for the rest of the job. Pinning to `7.24.0`
+        # keeps identical nb-mcp-server commits testing against
+        # identical CLI behavior across CI runs. Matches the
+        # version we develop against locally. Skipped on Windows
+        # because the `tests/integration/real_nb_typed_errors.rs`
+        # suite is `#[cfg(unix)]` and `nb 7.24.0` is bash-only.
+        if: matrix.platform != 'windows-latest'
+        run: |
+          set -eu
+          git clone --depth 1 --branch 7.24.0 https://github.com/xwmx/nb.git /tmp/nb
+          mkdir -p "$HOME/.local/bin"
+          ln -sf /tmp/nb/nb "$HOME/.local/bin/nb"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Check Formatting
         if: matrix.platform == 'ubuntu-latest'
         run: cargo fmt --all -- --check

@@ -10,7 +10,7 @@ pub async fn disable_commit_signing(config: &Config) -> Result<Option<PathBuf>> 
     let nb_client =
         nb_api::NbClient::new(&nb_config).context("create nb client for commit signing update")?;
     let path = nb_client
-        .notebook_path(nb_config.notebook.as_deref())
+        .show_notebook_path(nb_config.notebook.as_deref())
         .await
         .context("fetch notebook path for commit signing update")?;
     disable_signing_for_path(&path).await.map(Some)

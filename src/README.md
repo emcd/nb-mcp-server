@@ -98,3 +98,34 @@ Note: MCP clients may display these tools with server-prefixed names (e.g.,
 Prefer one obvious way for agents to say where new content goes. Preserve copied
 native selectors only for operations on existing content, where they reduce
 friction without creating new routing ambiguity.
+
+## Edit Mode
+
+`edit` requires an explicit `mode`. The advertised values are
+`overwrite`, `append`, and `prepend`. `overwrite` replaces every byte
+of the note body. The legacy input value `replace` is still accepted
+through the upstream `nb-api 0.2` serde alias and is interpreted as
+`overwrite`, but is not advertised in schemas or help.
+
+Omitting `mode` is rejected before `nb` is invoked; the diagnostic
+names the three canonical values and tells the caller to choose one.
+
+## Typed Error Translation
+
+`nb-api 0.2` introduces two typed failures that the MCP layer
+translates identically across the multiplexed `nb` tool and every
+first-class surface:
+
+- `UnsupportedShowTarget` (from `show` on a non-text selector):
+  names the offending selector and actual non-text type, states
+  that `show` reads text notes only, and steers the caller toward
+  `folders` or `list`. The server never silently re-routes `show` to
+  another command.
+- `DuplicateTitleHeading` (from `add` with both `title` and a
+  content whose first nonblank line is an H1 that duplicates the
+  title): names the title and the detected heading and offers either
+  recovery (remove the duplicate H1, or omit the separate
+  `title`).
+
+All other `nb-api` errors pass through with the upstream message
+preserved.

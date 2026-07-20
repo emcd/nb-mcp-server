@@ -2,8 +2,8 @@ use nb_mcp_server::nb::{EditMode, SearchMode, TaskStatus};
 
 #[test]
 fn edit_mode_deserializes_lowercase_values() {
-    let mode: EditMode = serde_json::from_str("\"replace\"").unwrap();
-    assert_eq!(mode, EditMode::Replace);
+    let mode: EditMode = serde_json::from_str("\"overwrite\"").unwrap();
+    assert_eq!(mode, EditMode::Overwrite);
     let mode: EditMode = serde_json::from_str("\"append\"").unwrap();
     assert_eq!(mode, EditMode::Append);
     let mode: EditMode = serde_json::from_str("\"prepend\"").unwrap();
@@ -28,8 +28,10 @@ fn search_mode_deserializes_lowercase_values() {
 
 #[test]
 fn re_exported_types_resolve_from_nb_module() {
-    // Verify backward compatibility: nb_mcp_server::nb re-exports work.
-    let _: EditMode = serde_json::from_str("\"replace\"").unwrap();
-    let _: SearchMode = serde_json::from_str("\"any\"").unwrap();
-    let _: TaskStatus = serde_json::from_str("\"open\"").unwrap();
+    let edit: EditMode = serde_json::from_str("\"replace\"").unwrap();
+    assert_eq!(edit, EditMode::Overwrite);
+    let search: SearchMode = serde_json::from_str("\"any\"").unwrap();
+    assert_eq!(search, SearchMode::Any);
+    let status: TaskStatus = serde_json::from_str("\"open\"").unwrap();
+    assert_eq!(status, TaskStatus::Open);
 }

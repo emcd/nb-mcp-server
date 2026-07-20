@@ -65,7 +65,7 @@ fn env_flag_enabled(name: &str) -> bool {
 async fn show_paths(config: &Config) -> Result<()> {
     let nb_config = config.to_nb_api_config();
     let nb = nb_api::NbClient::new(&nb_config)?;
-    let notebook_path = nb.notebook_path(nb_config.notebook.as_deref()).await?;
+    let notebook_path = nb.show_notebook_path(nb_config.notebook.as_deref()).await?;
     let log_path = paths::get_log_path();
     let state_dir = log_path.parent().unwrap_or(log_path.as_path());
     println!("notebook_path: {}", notebook_path.display());

@@ -186,6 +186,16 @@ fn tool_text(response: &Value) -> String {
         .to_string()
 }
 
+fn rejection_text(response: &Value) -> Option<String> {
+    if let Some(text) = response["result"]["content"][0]["text"].as_str() {
+        return Some(text.to_string());
+    }
+    if let Some(message) = response["error"]["message"].as_str() {
+        return Some(message.to_string());
+    }
+    None
+}
+
 fn tool_json(response: &Value) -> Value {
     let content = &response["result"]["content"][0];
     if let Some(value) = content.get("json") {
@@ -197,6 +207,14 @@ fn tool_json(response: &Value) -> Value {
 
 fn is_tool_error(response: &Value) -> bool {
     response["result"]["isError"].as_bool().unwrap_or(false)
+}
+
+fn is_protocol_error(response: &Value) -> bool {
+    response["error"].is_object()
+}
+
+fn is_rejection(response: &Value) -> bool {
+    is_tool_error(response) || is_protocol_error(response)
 }
 
 #[test]
@@ -726,7 +744,8 @@ fn first_class_edit_works() {
         "edit",
         json!({
             "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-            "content": "Updated content."
+            "content": "Updated content.",
+            "mode": "overwrite",
         }),
     );
     assert!(!is_tool_error(&response), "response: {response}");
@@ -939,4 +958,277 @@ fn cross_surface_todo_equivalence() {
     // Both should produce "Added:" output (same shim response)
     assert!(tool_text(&multiplexed).contains("Added:"));
     assert!(tool_text(&first_class).contains("Added:"));
+}
+
+// Edit-mode contract regressions: edit.mode is required; canonical
+// overwrite is advertised; legacy replace remains compatible input.
+
+#[test]
+fn edit_mode_is_required_in_first_class_schema() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let tools = server.list_tools();
+    let tools = tools["result"]["tools"].as_array().unwrap();
+    let edit_tool = tools
+        .iter()
+        .find(|t| t["name"].as_str() == Some("edit"))
+        .expect("edit tool should exist");
+    let required = edit_tool["inputSchema"]["required"]
+        .as_array()
+        .expect("edit schema should expose required list");
+    let required_fields: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+    assert!(
+        required_fields.contains(&"mode"),
+        "edit.mode should be required, got required: {required_fields:?}"
+    );
+
+    let schema = &edit_tool["inputSchema"];
+    let defs = &schema["$defs"];
+    let mode_ref = schema["properties"]["mode"]["$ref"]
+        .as_str()
+        .expect("mode should $ref a $defs entry");
+    let mode_def_name = mode_ref.trim_start_matches("#/$defs/");
+    let mode_enum = &defs[mode_def_name]["oneOf"];
+    let variants: Vec<String> = mode_enum
+        .as_array()
+        .expect("EditMode oneOf should be an array")
+        .iter()
+        .filter_map(|entry| entry["const"].as_str().map(str::to_string))
+        .collect();
+    for required_variant in ["overwrite", "append", "prepend"] {
+        assert!(
+            variants.iter().any(|v| v == required_variant),
+            "edit.mode should advertise {required_variant:?}, got variants: {variants:?}"
+        );
+    }
+    assert!(
+        !variants.iter().any(|v| v == "replace"),
+        "edit.mode must not advertise legacy replace, got variants: {variants:?}"
+    );
+}
+
+#[test]
+fn edit_mode_is_required_in_multiplexed_help() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let help = server.call_help("nb.edit");
+    assert!(!is_tool_error(&help), "help: {help}");
+    let help_text = tool_text(&help);
+    assert!(
+        help_text.contains("mode required"),
+        "nb.edit help should describe mode as required, got: {help_text}"
+    );
+    for variant in ["overwrite", "append", "prepend"] {
+        assert!(
+            help_text.contains(variant),
+            "nb.edit help should name {variant:?}, got: {help_text}"
+        );
+    }
+}
+
+#[test]
+fn first_class_edit_rejects_missing_mode_before_invoking_nb() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content.",
+        }),
+    );
+    assert!(
+        is_rejection(&response),
+        "expected rejection when mode is missing, got: {response}"
+    );
+    let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap_or_default();
+    assert!(
+        !calls.lines().any(|line| line.starts_with("edit ")),
+        "edit must not be invoked when mode is missing; calls: {calls}"
+    );
+}
+
+#[test]
+fn multiplexed_edit_rejects_missing_mode_before_invoking_nb() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_nb(
+        "nb.edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content.",
+        }),
+    );
+    assert!(
+        is_rejection(&response),
+        "expected rejection when mode is missing, got: {response}"
+    );
+    let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap_or_default();
+    assert!(
+        !calls.lines().any(|line| line.starts_with("edit ")),
+        "edit must not be invoked when mode is missing; calls: {calls}"
+    );
+}
+
+#[test]
+fn edit_accepts_legacy_replace_input() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class(
+        "edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content.",
+            "mode": "replace",
+        }),
+    );
+    assert!(
+        !is_rejection(&response),
+        "legacy mode:replace must remain compatible, got: {response}"
+    );
+    assert!(tool_text(&response).contains("edited"));
+}
+
+#[test]
+fn multiplexed_edit_accepts_legacy_replace_input() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_nb(
+        "nb.edit",
+        json!({
+            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+            "content": "Updated content.",
+            "mode": "replace",
+        }),
+    );
+    assert!(
+        !is_rejection(&response),
+        "legacy mode:replace must remain compatible, got: {response}"
+    );
+    assert!(tool_text(&response).contains("edited"));
+}
+
+// Cross-surface equivalence for edit behavior: every edit contract,
+// observed through both surfaces, must produce identical wording.
+
+#[test]
+fn edit_mode_rejection_is_parity_across_surfaces() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let payload = json!({
+        "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+        "content": "Updated content.",
+    });
+    let first_class = server.call_first_class("edit", payload.clone());
+    let multiplexed = server.call_nb("nb.edit", payload);
+    assert!(
+        is_rejection(&first_class),
+        "first-class edit should reject missing mode, got: {first_class}"
+    );
+    assert!(
+        is_rejection(&multiplexed),
+        "multiplexed edit should reject missing mode, got: {multiplexed}"
+    );
+    let first_class_text = rejection_text(&first_class).unwrap_or_else(|| {
+        panic!("direct edit rejection produced no diagnostic text: {first_class}")
+    });
+    let multiplexed_text = rejection_text(&multiplexed).unwrap_or_else(|| {
+        panic!("multiplexed edit rejection produced no diagnostic text: {multiplexed}")
+    });
+    assert!(
+        !first_class_text.is_empty() && !multiplexed_text.is_empty(),
+        "both surfaces should produce a missing-mode diagnostic, got direct={first_class_text:?} multiplexed={multiplexed_text:?}"
+    );
+    assert_eq!(
+        first_class_text, multiplexed_text,
+        "direct and multiplexed missing-mode errors must produce identical wording"
+    );
+    for value in ["overwrite", "append", "prepend"] {
+        assert!(
+            first_class_text.contains(value),
+            "missing-mode diagnostic should name {value}, got: {first_class_text}"
+        );
+    }
+}
+
+#[test]
+fn edit_overwrite_success_is_parity_across_surfaces() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let payload = json!({
+        "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
+        "content": "Updated content.",
+        "mode": "overwrite",
+    });
+    let first_class = server.call_first_class("edit", payload.clone());
+    let multiplexed = server.call_nb("nb.edit", payload);
+    assert!(
+        !is_rejection(&first_class),
+        "first-class overwrite should succeed, got: {first_class}"
+    );
+    assert!(
+        !is_rejection(&multiplexed),
+        "multiplexed overwrite should succeed, got: {multiplexed}"
+    );
+    assert_eq!(
+        tool_text(&first_class),
+        tool_text(&multiplexed),
+        "direct and multiplexed edit success responses must match"
+    );
+}
+
+// Empty-list passthrough: the MCP layer must pass `list` and `folders`
+// output through verbatim. Sanitization of `nb` native CLI hint blocks
+// is the responsibility of `nb-api`, exercised at the API layer.
+
+// `tests/support/nb` echoes `<verb> ${notebook}\n` (echo appends a
+// trailing newline) for `list` and `folders`. The MCP layer must pass
+// the bytes through unchanged on every surface. Asserts use the exact
+// shim output, not `starts_with`, so appended, truncated, or
+// reformatted output fails the regression.
+const EXPECTED_LIST: &str = "listed mcp-stdio-testbook\n";
+const EXPECTED_FOLDERS: &str = "folders mcp-stdio-testbook\n";
+
+fn assert_passthrough_exact(surface: &str, response: &Value, expected: &str) {
+    assert!(
+        !is_rejection(response),
+        "[{surface}] should pass through shim output, got: {response}"
+    );
+    let output = tool_text(response);
+    assert_eq!(
+        output, expected,
+        "[{surface}] should pass the exact shim output through (including trailing newline); got: {output:?}"
+    );
+}
+
+#[test]
+fn first_class_list_passes_exact_shim_output() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("list", json!({}));
+    assert_passthrough_exact("first-class list", &response, EXPECTED_LIST);
+}
+
+#[test]
+fn multiplexed_list_passes_exact_shim_output() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_nb("nb.list", json!({}));
+    assert_passthrough_exact("multiplexed nb.list", &response, EXPECTED_LIST);
+}
+
+#[test]
+fn first_class_folders_passes_exact_shim_output() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_first_class("folders", json!({}));
+    assert_passthrough_exact("first-class folders", &response, EXPECTED_FOLDERS);
+}
+
+#[test]
+fn multiplexed_folders_passes_exact_shim_output() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    let response = server.call_nb("nb.folders", json!({}));
+    assert_passthrough_exact("multiplexed nb.folders", &response, EXPECTED_FOLDERS);
 }
