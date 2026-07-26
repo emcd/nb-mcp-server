@@ -7,22 +7,11 @@
     "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": 1,
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": 1
   },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|MultiEdit|Write",
-        "hooks": [
-        ]
-      }
-    ]
-  },
+  "enabledMcpjsonServers": [
+    "agentmux",
+    "context7",
+    "nb"
+  ],
   "permissions": {
     "auto_allow": [
       "mcp__agentmux__list",

@@ -1,16 +1,15 @@
 schema: spec-driven
 
 # Minimum OpenSpec version: >= 1.4.0
-# 1.5 stores/worksets feature is unstable beta — do not depend on it.
+# 1.5 stores/worksets feature is unstable beta -- do not depend on it.
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
 # Example:
 #   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+#     Tech stack: Rust
+#     Project: nb-mcp-server
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

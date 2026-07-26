@@ -1,9 +1,4 @@
-# agentsmgr populates generated coder content in these directories.
-agent/
-command/
-commands/
-prompt/
-skills/
+# OpenCode may install project-local plugin dependencies.
 node_modules/
 bun.lock
 package.json

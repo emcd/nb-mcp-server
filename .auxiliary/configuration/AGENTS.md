@@ -84,29 +84,23 @@ Before implementing code changes, consult these files in `.auxiliary/instruction
 - Batch related updates into one message instead of sending rapid-fire partial status pings.
 - Use `Cc` only for agents who need to act or review; avoid broad `Cc` by default.
 - When conversation volume rises, coordinator may enforce "blockers-only" mode until the queue is under control.
-## Tests Development
-
-- Prefer tests under `tests/unit` and `tests/integration` over inline `#[cfg(test)]` modules in `src/**`.
-- Prefer tests that exercise public interfaces; avoid source-inclusion patterns used only to reach private internals.
-- Inline `#[cfg(test)]` is permitted only when ALL of the following hold:
-  1. The tested item is crate-private **by design** (not by oversight or laziness) and making it testable externally would require widening its visibility or adding a `#[doc(hidden)] pub` escape hatch that would itself become unintended API surface.
-  2. No existing public interface exercises the same code path.
-  3. The inline test block contains at most **one** `#[test]` function.
-- If a candidate inline test fails any of these conditions, move it to `tests/unit` and widen visibility or restructure as needed. Do not default to inline to avoid that conversation; the friction is intentional.
 
 ## OpenSpec Instructions
 
-This project uses OpenSpec 1.x (OPSX). Workflow Guide: @documentation/agents/openspec.md
+This project uses OpenSpec 1.x (OPSX), the action-based workflow. OPSX skills
+deliver workflow instructions through the agentsmgr distribution pipeline.
+Workflow guide: @documentation/agents/openspec.md
 
-Always open `documentation/agents/openspec.md` when the request:
+Workflow skills: `opsx-propose`, `opsx-explore`, `opsx-apply`,
+`opsx-sync`, `opsx-archive`.
+
+Use OPSX skills when the request:
 - Mentions planning or proposals (words like proposal, spec, change, plan).
 - Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work.
 - Sounds ambiguous and you need the authoritative spec before coding.
 
-Quick orientation:
-- Workflow actions are the `/opsx:*` commands (`propose`, `explore`, `new`, `continue`, `ff`, `apply`, `verify`, `sync`, `archive`).
-- The `openspec` CLI provides state: `list`, `status`, `instructions`, `validate --all --strict`.
-- Project configuration lives in `openspec/config.yaml` (default schema: `spec-driven`).
+CLI state queries: `openspec list`, `openspec list --specs`,
+`openspec status --change <id>`, `openspec validate --all --strict`.
 
 When a commit completes an OpenSpec task or requirement, update the relevant OpenSpec task status in the same commit.
 
@@ -116,7 +110,7 @@ When a commit completes an OpenSpec task or requirement, update the relevant Ope
 - Commits are acceptable review artifacts when implementation work is delegated by a human operator, coordinator, tech lead, or documented project workflow. Otherwise, ask before committing.
 - Do **not** merge, push, publish review branches, or modify shared branches without explicit human approval.
 - Do **not** bypass commit safety checks (e.g., `--no-verify`, `--no-gpg-sign`) unless the user explicitly approves doing so.
-- If a commit hook rejects a commit, fix the issue, restage the intended files, and rerun `git commit` with the same message. Do **not** amend a previous commit unless the user explicitly asked for an amend.
+- If a commit hook rejects a commit, assume no commit was created unless Git clearly reports otherwise. Fix the hook finding, restage the intended files, and rerun the same `git commit` command.
 - Use present tense, imperative mood verbs (e.g., "Fix" not "Fixed").
 - Write sentences with proper punctuation.
 - Include a `Co-Authored-By:` field as the final line. Should include the model name and a no-reply address.
@@ -129,10 +123,7 @@ When a commit completes an OpenSpec task or requirement, update the relevant Ope
 # Project Notes
 
 <!-- This section accumulates project-specific knowledge, constraints, and deviations.
-     For structured items, use `nb`.
+     For structured items, use `nb`. -->
 
-     TODO: If this project uses multiple agent/worktree roles, create a stable
-     team-organization note in `nb`, modeled after one of the examples at:
-     https://raw.githubusercontent.com/emcd/agents-common/master/examples/nb-notes/team-organization/README.md
-     Then link the note here, for example:
-     - Team org, role ownership, signoff policy, and merge workflow: `coordination/general/<n>` -->
+- Team org, role ownership, signoff policy, and merge workflow:
+  `coordination/general/6`.
