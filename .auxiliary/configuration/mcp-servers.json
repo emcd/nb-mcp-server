@@ -4,7 +4,7 @@
       "command": "agentmux",
       "args": [
         "host", "mcp",
-        "--bundle", "infrastructure"
+        "--bundle", "notebook"
       ]
     },
     "context7": {

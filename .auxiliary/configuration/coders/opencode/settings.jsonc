@@ -66,7 +66,7 @@
         "host",
         "mcp",
         "--bundle",
-        "infrastructure"
+        "notebook"
       ],
       "enabled": true,
       "timeout": 900000

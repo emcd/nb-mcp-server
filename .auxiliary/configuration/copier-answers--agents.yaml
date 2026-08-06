@@ -13,7 +13,7 @@ instructions_sources:
 instructions_target: .auxiliary/instructions
 languages:
 - rust
-project_bundle_name: infrastructure
+project_bundle_name: notebook
 project_name: nb-mcp-server
 provide_instructions: true
 support_local_models: true

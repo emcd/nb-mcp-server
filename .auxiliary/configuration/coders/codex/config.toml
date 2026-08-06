@@ -19,7 +19,7 @@ guardian_approval = false
 
 [mcp_servers.agentmux]
 command = "agentmux"
-args = ["host", "mcp", "--bundle", "infrastructure"]
+args = ["host", "mcp", "--bundle", "notebook"]
 startup_timeout_sec = 60
 tool_timeout_sec = 900
 
