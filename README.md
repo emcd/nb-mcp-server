@@ -111,18 +111,21 @@ with a separate `notebook` argument.
 ### First-Class Tools
 
 All commands are also available as direct first-class tools with typed
-schemas: `add`, `show`, `edit`, `delete`, `move`, `list`, `search`, `todo`,
-`do`, `undo`, `tasks`, `bookmark`, `folders`, `mkdir`, `import`, `status`,
-`notebooks`. These bypass the multiplexed command dispatch. The multiplexed
-`nb` tool remains as the compact/backcompat compatibility surface.
+schemas: `add`, `show`, `delete`, `move`, `list`, `search`, `todo`,
+`do`, `undo`, `tasks`, `bookmark`, `folders`, `mkdir`, `import`,
+`status`, `notebooks`, plus the body-aware tools `replace_note_body`,
+`edit_note_substring`, `edit_note_lines`, `retitle_note`,
+`edit_note_tags`, and the line tools `show_note_lines`,
+`search_note_lines`. These bypass the multiplexed command dispatch. The
+multiplexed `nb` tool remains as the compact/backcompat compatibility
+surface for the retained commands.
 
 ### Notes
 
 | Command | Description | Key Arguments |
 |---------|-------------|---------------|
 | `nb.add` | Create a note | `title`, `content`, `tags[]`, `folder` required by default |
-| `nb.show` | Read a note | `id` (alias: `selector`) |
-| `nb.edit` | Update a note | `id` (alias: `selector`), `content`, `mode` (required: `overwrite`, `append`, `prepend`) |
+| `nb.show` | Read a note (structured envelope) | `id` (alias: `selector`) |
 | `nb.delete` | Delete a note | `id` (alias: `selector`) |
 | `nb.move` | Move or rename a note | `id` (alias: `selector`), `destination` |
 | `nb.list` | List notes | `folder`, `tags[]`, `limit` (`[ ]` / `[x]` indicate todo status; leading glyphs are item markers) |
@@ -189,23 +192,54 @@ Example categories and prefixes:
 | Task type | `task-<type>` | `task-bug`, `task-feature` |
 | Status | `status-<state>` | `status-review`, `status-blocked` |
 
-## Edit Behavior
+## Body-Aware Editing
 
-`nb.edit` requires an explicit `mode` value. The schema advertises
-`overwrite`, `append`, and `prepend`. `overwrite` replaces every byte
-of the note body (it is destructive). The legacy input value
-`replace` is still accepted through the upstream `nb-api` serde
-alias and is interpreted as `overwrite`.
+The legacy `nb.edit` tool (and its `overwrite`/`append`/`prepend` modes)
+was removed in the `nb-api 0.3` cutover. The body-aware replacement tools
+are **direct-only** (no multiplexed `nb.*` aliases) and are designed to
+prevent the destructive whole-note-overwrite failure mode that the old
+surface enabled:
 
-Omitting `mode` is rejected before `nb` is invoked. Clients that
-relied on the destructive default must now send `mode: "overwrite"`
-explicitly.
+- `replace_note_body` — replace the entire note body. Requires the body
+  `fingerprint` from a preceding `show`; a stale fingerprint is rejected
+  with re-read guidance so you cannot overwrite a note you have not just
+  read.
+- `edit_note_substring` — replace one or more occurrences of a byte
+  pattern. `expected_count` must match the actual match count; an
+  optional fingerprint guards against stale edits.
+- `edit_note_lines` — apply a batch of disjoint insert/delete/replace
+  edits verified against line anchors from one original snapshot.
+- `retitle_note` — change the title without changing the path.
+- `edit_note_tags` — add and/or remove tags in one atomic operation.
+
+These tools address notes by `target` (`{"type":"selector","value":...}`
+or `{"type":"path","value":...}`). Line-level reads are available through
+`show_note_lines` (bounded, anchored windows) and `search_note_lines`
+(anchored matches), which support search-to-edit without reading the whole
+note.
+
+Invoking multiplexed `nb.edit` is rejected with recovery guidance naming
+the replacement tools. The body-aware and line tools are direct-only:
+invoking them through the multiplexed `nb` tool is rejected.
+
+## Structured Results
+
+- `show` returns a structured envelope. The base64 `source` and `body`
+  fields are the byte-exact authority (arbitrary bytes allowed). A `text`
+  field carries lossy UTF-8 decoding and is present only when the source
+  is valid UTF-8; otherwise `non_utf8` is `true` and `text` is absent.
+  `fingerprint`, `kind`, `tags`, and body-fragment metadata accompany it.
+- Mutating tools (`add`, `todo`, `bookmark`, `mkdir`, `delete`, `move`,
+  `do`, `undo`, and the body-aware tools) return a structured
+  `CommitOutcome`: `commit_created`, `revision_id`, `pre_revision`, and
+  per-operation `path`/`selector`/`noop`/`fingerprint`. Idempotent no-op
+  mutations report `commit_created: false`.
 
 ## Typed Error Surfaces
 
-`nb-api 0.2` introduces two typed failures that the MCP layer
-translates into actionable diagnostics on both the multiplexed
-`nb.*` surface and the first-class tool surface:
+`nb-api 0.3` introduces typed failures that the MCP layer translates into
+actionable diagnostics on both the multiplexed `nb.*` surface and the
+first-class tool surface:
 
 - `show` on a non-text selector (folder, archive, image, ...): the
   error names the selector and the actual non-text type, states
@@ -216,6 +250,21 @@ translates into actionable diagnostics on both the multiplexed
   line is an H1 that duplicates the title: the error names the
   title and the detected heading and tells the caller to remove
   the duplicate H1 or omit the separate `title`.
+- Stale-editing guards: `FingerprintMismatch`, `AnchorMismatch`, and
+  `OccurrenceMismatch` tell the caller to re-read the note and retry
+  with fresh fingerprint/anchors/counts.
+- `FragmentedBody`: a multi-fragment body (for example a bookmark with
+  multiple body fragments) refuses line/substring/body-replace
+  operations; metadata operations (`retitle_note`, `edit_note_tags`)
+  still apply.
+- `DirtyBaseline`: a mutation refuses when the notebook worktree/index
+  is dirty; the diagnostic tells the caller to commit or clean it first.
+- `IndeterminateCommit` / `RecoveryRequired`: commit completion is unknown
+  or recovery is needed; the diagnostic instructs the caller not to
+  auto-retry and to inspect HEAD/status before acting.
+- `GateTimeout`: the notebook is busy; retry later.
+- `PathCollision` / `PathIgnored` / `UnsupportedStructure` /
+  `PlanValidation`: surface the specific path/plan guidance.
 
 ## Configuration
 
@@ -278,7 +327,7 @@ signing prompts do not block MCP tool calls.
 
 ## Related Projects
 
-- [nb-api](https://github.com/emcd/nb-api) — Typed Rust interface to the `nb` CLI. Published on [crates.io](https://crates.io/crates/nb-api). This MCP server depends on `nb-api` for all note-taking primitives; the `edit` vocabulary, typed `show`/`add` errors, and sanitized empty listings all come from `nb-api 0.2`.
+- [nb-api](https://github.com/emcd/nb-api) — Typed Rust interface to the `nb` CLI. Published on [crates.io](https://crates.io/crates/nb-api). This MCP server depends on `nb-api` for all note-taking primitives; the body-aware editing surface, typed errors, structured results, and sanitized empty listings all come from `nb-api 0.3`.
 
 ## Contributing
 
