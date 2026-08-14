@@ -111,6 +111,15 @@ impl RealNbServer {
             .unwrap_or_default()
             .to_string()
     }
+
+    fn result_json(response: &Value) -> Value {
+        let content = &response["result"]["content"][0];
+        if let Some(value) = content.get("json") {
+            return value.clone();
+        }
+        let text = content["text"].as_str().unwrap();
+        serde_json::from_str(text).unwrap()
+    }
 }
 
 /// Path of the regression folder inside each fixture. `nb` 7.24.0
@@ -253,4 +262,816 @@ fn add_duplicate_h1_typed_error_is_parity_across_surfaces() {
     );
     assert_duplicate_h1_error(&direct_text, "direct");
     assert_duplicate_h1_error(&multiplexed_text, "multiplexed");
+}
+
+// ---- nb-api 0.3 native-engine surface regressions ----
+
+/// Address a note by its fixture-relative path (e.g. `folder/name.md`).
+fn target_path(path: &str) -> Value {
+    json!({"type": "path", "value": path})
+}
+
+/// Create a note through the MCP `add` tool and return the created note's
+/// path (from the structured CommitOutcome) plus the response.
+fn add_note_via_mcp(
+    server: &mut RealNbServer,
+    env: &NbTestEnv,
+    title: &str,
+    content: &str,
+) -> Value {
+    let response = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": title,
+            "content": content,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        response["result"]["isError"].as_bool(),
+        Some(false),
+        "add should succeed; got: {response}"
+    );
+    response
+}
+
+#[test]
+fn mutation_returns_structured_commit_outcome() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let response = add_note_via_mcp(&mut server, &env, "Outcome Note", "Body text.\n");
+    let outcome = RealNbServer::result_json(&response);
+    assert_eq!(
+        outcome["commit_created"].as_bool(),
+        Some(true),
+        "add should create a commit; got: {outcome}"
+    );
+    assert!(
+        outcome["revision_id"].as_str().is_some(),
+        "add should report a revision id; got: {outcome}"
+    );
+    assert!(
+        outcome["pre_revision"].as_str().is_some(),
+        "add should report a pre_revision; got: {outcome}"
+    );
+    let ops = outcome["ops"].as_array().unwrap();
+    assert_eq!(ops.len(), 1, "add should report one op; got: {outcome}");
+    assert_eq!(
+        ops[0]["noop"].as_bool(),
+        Some(false),
+        "add op should not be a noop; got: {outcome}"
+    );
+    let path = ops[0]["path"].as_str().unwrap();
+    assert!(
+        path.contains("session-notes/"),
+        "add op path should be inside the folder; got: {path}"
+    );
+    assert!(
+        ops[0]["fingerprint"].as_str().is_some(),
+        "add op should report a fingerprint; got: {outcome}"
+    );
+}
+
+#[test]
+fn show_returns_structured_envelope_with_byte_exact_source() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let note_body = "# Headline\n\nSome body with backticks `code`.\n";
+    let add_response = add_note_via_mcp(&mut server, &env, "Envelope Note", note_body);
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let response = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        response["result"]["isError"].as_bool(),
+        Some(false),
+        "show should succeed; got: {response}"
+    );
+    let envelope = RealNbServer::result_json(&response);
+    assert_eq!(
+        envelope["non_utf8"].as_bool(),
+        Some(false),
+        "UTF-8 note should not be non_utf8; got: {envelope}"
+    );
+    let text = envelope["text"].as_str().unwrap();
+    assert!(
+        text.contains("# Headline"),
+        "envelope text should contain the note body; got: {text:?}"
+    );
+    assert!(
+        text.contains("backticks `code`"),
+        "envelope text should preserve backticks; got: {text:?}"
+    );
+    // Base64 source is the byte-exact authority: the note file is the
+    // title line plus the body (nb-api `build_note_bytes`).
+    let source_b64 = envelope["source"]["base64"].as_str().unwrap();
+    let decoded = base64_standard_decode(source_b64);
+    assert_eq!(
+        String::from_utf8(decoded.clone()).unwrap(),
+        format!("# Envelope Note\n\n{note_body}"),
+        "base64 source must decode to the original note bytes"
+    );
+    let fingerprint = envelope["fingerprint"].as_str().unwrap();
+    assert!(
+        fingerprint.starts_with("b3:"),
+        "envelope fingerprint should be b3:; got: {fingerprint}"
+    );
+}
+
+fn base64_standard_decode(input: &str) -> Vec<u8> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(input)
+        .unwrap_or_else(|e| panic!("invalid base64: {e}: {input:?}"))
+}
+
+fn base64_standard_encode(input: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(input)
+}
+
+/// Build a base64 `ByteString` wire value (`{"base64": "..."}`).
+fn b64_bytes(input: &[u8]) -> Value {
+    json!({"base64": base64_standard_encode(input)})
+}
+
+#[test]
+fn replace_note_body_requires_fresh_fingerprint() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response = add_note_via_mcp(&mut server, &env, "Replace Me", "Original body.\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    // Read the note to obtain the fresh fingerprint.
+    let show_response = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let envelope = RealNbServer::result_json(&show_response);
+    let fingerprint = envelope["fingerprint"].as_str().unwrap().to_string();
+
+    // Correct fingerprint: replace succeeds.
+    let ok = server.call_first_class(
+        "replace_note_body",
+        json!({
+            "target": target_path(&path),
+            "new_body": b64_bytes(b"Replaced body.\n"),
+            "fingerprint": fingerprint,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        ok["result"]["isError"].as_bool(),
+        Some(false),
+        "replace with fresh fingerprint should succeed; got: {ok}"
+    );
+
+    // Stale fingerprint: replace is rejected with mismatch guidance.
+    let stale = "b3:0000000000000000000000000000000000000000000000000000000000000000";
+    let rejected = server.call_first_class(
+        "replace_note_body",
+        json!({
+            "target": target_path(&path),
+            "new_body": b64_bytes(b"Should be rejected.\n"),
+            "fingerprint": stale,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        rejected["result"]["isError"].as_bool(),
+        Some(true),
+        "replace with stale fingerprint should be rejected; got: {rejected}"
+    );
+    let text = RealNbServer::error_text(&rejected);
+    assert!(
+        text.contains("fingerprint"),
+        "stale-fingerprint rejection should mention fingerprint; got: {text}"
+    );
+    assert!(
+        text.contains("re-read"),
+        "stale-fingerprint rejection should tell caller to re-read; got: {text}"
+    );
+}
+
+#[test]
+fn retitle_note_changes_title_without_path() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response = add_note_via_mcp(&mut server, &env, "Old Title", "Body.\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let response = server.call_first_class(
+        "retitle_note",
+        json!({
+            "target": target_path(&path),
+            "title": b64_bytes(b"New Title"),
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        response["result"]["isError"].as_bool(),
+        Some(false),
+        "retitle should succeed; got: {response}"
+    );
+
+    let show_response = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let envelope = RealNbServer::result_json(&show_response);
+    let title_text = envelope["title_text"].as_str().unwrap();
+    assert_eq!(
+        title_text, "New Title",
+        "retitle should change the title text; got: {title_text}"
+    );
+}
+
+#[test]
+fn edit_note_tags_adds_and_removes_atomically() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Tagged Note", "Body with a #kept tag.\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let response = server.call_first_class(
+        "edit_note_tags",
+        json!({
+            "target": target_path(&path),
+            "add": ["alpha", "beta"],
+            "remove": [],
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        response["result"]["isError"].as_bool(),
+        Some(false),
+        "tag add should succeed; got: {response}"
+    );
+
+    let show_response = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let envelope = RealNbServer::result_json(&show_response);
+    let tags = envelope["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(
+        tags.contains(&"alpha") && tags.contains(&"beta"),
+        "tags should include alpha and beta; got: {tags:?}"
+    );
+}
+
+#[test]
+fn edit_subcommand_rejection_is_parity_across_surfaces() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let payload = json!({
+        "id": format!("{}:session-notes/test.md", env.notebook()),
+        "content": "Should be rejected.",
+        "mode": "overwrite",
+    });
+    let direct = server.call_first_class("edit", payload.clone());
+    let multiplexed = server.call_multiplexed("nb.edit", payload);
+    assert!(
+        direct["result"]["isError"].as_bool() == Some(true) || direct["error"].is_object(),
+        "direct edit should be rejected; got: {direct}"
+    );
+    assert_eq!(
+        multiplexed["result"]["isError"].as_bool(),
+        Some(true),
+        "multiplexed edit should be rejected; got: {multiplexed}"
+    );
+    let direct_text = if direct["result"]["content"][0]["text"].is_string() {
+        RealNbServer::error_text(&direct)
+    } else {
+        direct["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    let multiplexed_text = RealNbServer::error_text(&multiplexed);
+    assert!(
+        direct_text.contains("removed") || direct_text.contains("not found"),
+        "direct edit rejection should mention removal or absence; got: {direct_text}"
+    );
+    assert!(
+        multiplexed_text.contains("removed"),
+        "multiplexed edit rejection should mention removal; got: {multiplexed_text}"
+    );
+    for tool in [
+        "replace_note_body",
+        "edit_note_substring",
+        "edit_note_lines",
+        "retitle_note",
+        "edit_note_tags",
+    ] {
+        assert!(
+            multiplexed_text.contains(tool),
+            "multiplexed edit rejection should name {tool}; got: {multiplexed_text}"
+        );
+    }
+}
+
+#[test]
+fn dirty_baseline_mutation_is_rejected_with_recovery_guidance() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    // Create a note so there is a committed baseline.
+    add_note_via_mcp(&mut server, &env, "Baseline Note", "Clean baseline.\n");
+
+    // Dirty the worktree with an uncommitted file directly on disk.
+    let notebook_root = env.nb_dir().join(env.notebook());
+    let dirty_file = notebook_root.join("dirty-untracked.txt");
+    std::fs::write(&dirty_file, b"untracked").unwrap();
+
+    let response = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Should fail on dirty baseline",
+            "content": "Body.",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        response["result"]["isError"].as_bool(),
+        Some(true),
+        "mutation against a dirty worktree should be rejected; got: {response}"
+    );
+    let text = RealNbServer::error_text(&response);
+    assert!(
+        text.contains("dirty"),
+        "dirty-baseline rejection should mention dirty; got: {text}"
+    );
+    assert!(
+        text.contains("commit") || text.contains("clean"),
+        "dirty-baseline rejection should give recovery guidance; got: {text}"
+    );
+}
+
+// ---- Additional 0.3 direct-tool execution / error regressions (P2-2) ----
+
+#[test]
+fn non_utf8_body_round_trips_through_show_and_replace() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response = add_note_via_mcp(&mut server, &env, "Binary Note", "text body\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    // Fresh fingerprint from a preceding show.
+    let show1 = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let envelope1 = RealNbServer::result_json(&show1);
+    let fingerprint = envelope1["fingerprint"].as_str().unwrap().to_string();
+
+    // Replace the body with arbitrary non-UTF-8 bytes.
+    let non_utf8: &[u8] = &[0xff, 0xfe, b'x', 0x00, b'\n', 0x80];
+    let replaced = server.call_first_class(
+        "replace_note_body",
+        json!({
+            "target": target_path(&path),
+            "new_body": b64_bytes(non_utf8),
+            "fingerprint": fingerprint,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        replaced["result"]["isError"].as_bool(),
+        Some(false),
+        "replace with arbitrary bytes should succeed; got: {replaced}"
+    );
+
+    // Show reports non_utf8 with no text, and the base64 source is byte-exact.
+    let show2 = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let envelope2 = RealNbServer::result_json(&show2);
+    assert_eq!(
+        envelope2["non_utf8"].as_bool(),
+        Some(true),
+        "non-UTF-8 body should set non_utf8; got: {envelope2}"
+    );
+    assert!(
+        envelope2["text"].is_null() || envelope2.get("text").is_none(),
+        "non-UTF-8 body should omit text; got: {envelope2}"
+    );
+    let body_b64 = envelope2["body"]["base64"].as_str().unwrap();
+    assert_eq!(
+        base64_standard_decode(body_b64),
+        non_utf8,
+        "base64 body must round-trip the arbitrary bytes exactly"
+    );
+}
+
+#[test]
+fn edit_note_substring_replaces_occurrences_and_rejects_mismatches() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response = add_note_via_mcp(&mut server, &env, "Substring Note", "foo bar foo baz\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    // Success: replace all occurrences, expected_count matches.
+    let ok = server.call_first_class(
+        "edit_note_substring",
+        json!({
+            "target": target_path(&path),
+            "pattern": b64_bytes(b"foo"),
+            "replacement": b64_bytes(b"qux"),
+            "occurrence": {"type": "all"},
+            "expected_count": 2,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        ok["result"]["isError"].as_bool(),
+        Some(false),
+        "substring replace should succeed; got: {ok}"
+    );
+
+    // Occurrence mismatch: expected_count disagrees with actual.
+    let mismatch = server.call_first_class(
+        "edit_note_substring",
+        json!({
+            "target": target_path(&path),
+            "pattern": b64_bytes(b"qux"),
+            "replacement": b64_bytes(b"zed"),
+            "occurrence": {"type": "all"},
+            "expected_count": 5,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        mismatch["result"]["isError"].as_bool(),
+        Some(true),
+        "occurrence mismatch should be rejected; got: {mismatch}"
+    );
+    let mismatch_text = RealNbServer::error_text(&mismatch);
+    assert!(
+        mismatch_text.contains("expected") && mismatch_text.contains("found"),
+        "occurrence mismatch should report expected/found; got: {mismatch_text}"
+    );
+
+    // Empty pattern rejected.
+    let empty = server.call_first_class(
+        "edit_note_substring",
+        json!({
+            "target": target_path(&path),
+            "pattern": b64_bytes(b""),
+            "replacement": b64_bytes(b"x"),
+            "occurrence": {"type": "first"},
+            "expected_count": 0,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        empty["result"]["isError"].as_bool(),
+        Some(true),
+        "empty pattern should be rejected; got: {empty}"
+    );
+    let empty_text = RealNbServer::error_text(&empty);
+    assert!(
+        empty_text.contains("non-empty"),
+        "empty-pattern rejection should say non-empty; got: {empty_text}"
+    );
+}
+
+#[test]
+fn show_note_lines_returns_windowed_anchored_lines() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let body = "line one\nline two\nline three\n";
+    let add_response = add_note_via_mcp(&mut server, &env, "Lines Note", body);
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let response = server.call_first_class(
+        "show_note_lines",
+        json!({
+            "target": target_path(&path),
+            "offset": 1,
+            "limit": 2,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        response["result"]["isError"].as_bool(),
+        Some(false),
+        "show_note_lines should succeed; got: {response}"
+    );
+    let lines = RealNbServer::result_json(&response);
+    assert_eq!(
+        lines["total_lines"].as_u64(),
+        Some(3),
+        "total_lines should be 3; got: {lines}"
+    );
+    let window = lines["lines"].as_array().unwrap();
+    assert_eq!(window.len(), 2, "window should have 2 lines; got: {lines}");
+    assert!(
+        lines["next_offset"].as_u64().is_some(),
+        "windowed result should have next_offset; got: {lines}"
+    );
+    let first = &window[0];
+    assert_eq!(first["number"].as_u64(), Some(1));
+    assert!(first["anchor"].as_str().unwrap().starts_with("b3l1:"));
+
+    // Invalid window (offset 0) rejected with guidance.
+    let invalid = server.call_first_class(
+        "show_note_lines",
+        json!({
+            "target": target_path(&path),
+            "offset": 0,
+            "limit": 10,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        invalid["result"]["isError"].as_bool(),
+        Some(true),
+        "offset 0 should be rejected; got: {invalid}"
+    );
+    let invalid_text = RealNbServer::error_text(&invalid);
+    assert!(
+        invalid_text.contains("window"),
+        "invalid-window rejection should mention window; got: {invalid_text}"
+    );
+}
+
+#[test]
+fn search_note_lines_returns_anchored_hits() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let body = "alpha beta\ngamma alpha\n";
+    let add_response = add_note_via_mcp(&mut server, &env, "Search Lines", body);
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let response = server.call_first_class(
+        "search_note_lines",
+        json!({
+            "target": target_path(&path),
+            "pattern": b64_bytes(b"alpha"),
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        response["result"]["isError"].as_bool(),
+        Some(false),
+        "search_note_lines should succeed; got: {response}"
+    );
+    let result = RealNbServer::result_json(&response);
+    let hits = result["hits"].as_array().unwrap();
+    assert_eq!(
+        hits.len(),
+        2,
+        "should find alpha on two lines; got: {result}"
+    );
+    assert!(
+        hits[0]["anchor"].as_str().unwrap().starts_with("b3l1:"),
+        "hit should carry an anchor; got: {result}"
+    );
+
+    // Empty pattern rejected.
+    let empty = server.call_first_class(
+        "search_note_lines",
+        json!({
+            "target": target_path(&path),
+            "pattern": b64_bytes(b""),
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        empty["result"]["isError"].as_bool(),
+        Some(true),
+        "empty search pattern should be rejected; got: {empty}"
+    );
+}
+
+#[test]
+fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let body = "keep a\nreplace me\nkeep b\n";
+    let add_response = add_note_via_mcp(&mut server, &env, "Line Edit", body);
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    // Read anchors from a preceding show_note_lines.
+    let read = server.call_first_class(
+        "show_note_lines",
+        json!({
+            "target": target_path(&path),
+            "notebook": env.notebook(),
+        }),
+    );
+    let read_json = RealNbServer::result_json(&read);
+    let lines = read_json["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 3);
+    let line2 = &lines[1];
+    let anchor2 = line2["anchor"].as_str().unwrap();
+
+    // Success: replace line 2 with new content.
+    let ok = server.call_first_class(
+        "edit_note_lines",
+        json!({
+            "target": target_path(&path),
+            "edits": [
+                {
+                    "type": "replace",
+                    "start": {"number": 2, "anchor": anchor2},
+                    "end": {"number": 2, "anchor": anchor2},
+                    "content": b64_bytes(b"replaced!\n"),
+                }
+            ],
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        ok["result"]["isError"].as_bool(),
+        Some(false),
+        "anchored line edit should succeed; got: {ok}"
+    );
+
+    // Stale anchor: reuse the pre-edit anchor against the new body.
+    let stale = server.call_first_class(
+        "edit_note_lines",
+        json!({
+            "target": target_path(&path),
+            "edits": [
+                {
+                    "type": "replace",
+                    "start": {"number": 2, "anchor": anchor2},
+                    "end": {"number": 2, "anchor": anchor2},
+                    "content": b64_bytes(b"stale\n"),
+                }
+            ],
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        stale["result"]["isError"].as_bool(),
+        Some(true),
+        "stale anchor should be rejected; got: {stale}"
+    );
+    let stale_text = RealNbServer::error_text(&stale);
+    assert!(
+        stale_text.contains("anchor"),
+        "stale-anchor rejection should mention anchor; got: {stale_text}"
+    );
+    assert!(
+        stale_text.contains("re-read"),
+        "stale-anchor rejection should say re-read; got: {stale_text}"
+    );
+
+    // Overlapping edits rejected: re-read fresh anchors first, then submit
+    // two edits whose spans overlap on the current body.
+    let fresh_read = server.call_first_class(
+        "show_note_lines",
+        json!({
+            "target": target_path(&path),
+            "notebook": env.notebook(),
+        }),
+    );
+    let fresh_json = RealNbServer::result_json(&fresh_read);
+    let fresh_lines = fresh_json["lines"].as_array().unwrap();
+    let fresh_a1 = fresh_lines[0]["anchor"].as_str().unwrap();
+    let fresh_a2 = fresh_lines[1]["anchor"].as_str().unwrap();
+    let overlap = server.call_first_class(
+        "edit_note_lines",
+        json!({
+            "target": target_path(&path),
+            "edits": [
+                {
+                    "type": "replace",
+                    "start": {"number": 1, "anchor": fresh_a1},
+                    "end": {"number": 2, "anchor": fresh_a2},
+                    "content": b64_bytes(b"x\n"),
+                },
+                {
+                    "type": "replace",
+                    "start": {"number": 2, "anchor": fresh_a2},
+                    "end": {"number": 2, "anchor": fresh_a2},
+                    "content": b64_bytes(b"y\n"),
+                },
+            ],
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        overlap["result"]["isError"].as_bool(),
+        Some(true),
+        "overlapping line edits should be rejected; got: {overlap}"
+    );
+    let overlap_text = RealNbServer::error_text(&overlap);
+    assert!(
+        overlap_text.contains("overlap"),
+        "overlap rejection should mention overlap; got: {overlap_text}"
+    );
+}
+
+#[test]
+fn fragmented_body_rejects_line_operations_with_recovery_guidance() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    // Write a fragmented bookmark directly into the fixture notebook and
+    // commit it so the worktree stays clean. Two reserved body sections
+    // (`## Content` and a second `## Content`) separated by a canonical
+    // `## Tags` section yield TWO body fragments.
+    let notebook_root = env.nb_dir().join(env.notebook());
+    let file_path = notebook_root.join("session-notes/fragmented.bookmark.md");
+    std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+    let body = b"<https://example.com>\n\n## Content\n\nhello\n\n## Tags\n\n#beta\n\n## Content\n\nagain\n";
+    std::fs::write(&file_path, body).unwrap();
+    commit_file(&env, &notebook_root, "session-notes/fragmented.bookmark.md");
+    let path = "session-notes/fragmented.bookmark.md";
+
+    // Confirm the fixture is genuinely fragmented via show.
+    let show = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let envelope = RealNbServer::result_json(&show);
+    assert_eq!(
+        envelope["body_contiguous"].as_bool(),
+        Some(false),
+        "the crafted bookmark should be fragmented; got: {envelope}"
+    );
+
+    // Body-replace on a fragmented body is refused.
+    let replace = server.call_first_class(
+        "replace_note_body",
+        json!({
+            "target": target_path(path),
+            "new_body": b64_bytes(b"fragment attempt\n"),
+            "fingerprint": "b3:0000000000000000000000000000000000000000000000000000000000000000",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        replace["result"]["isError"].as_bool(),
+        Some(true),
+        "body replace on a fragmented body should be rejected; got: {replace}"
+    );
+    let text = RealNbServer::error_text(&replace);
+    assert!(
+        text.contains("fragment"),
+        "fragmented-body rejection should mention fragments; got: {text}"
+    );
+    assert!(
+        text.contains("retitle_note") && text.contains("edit_note_tags"),
+        "fragmented-body rejection should point at metadata ops; got: {text}"
+    );
+
+    // Line listing on a fragmented body is refused too.
+    let lines = server.call_first_class(
+        "show_note_lines",
+        json!({
+            "target": target_path(path),
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        lines["result"]["isError"].as_bool(),
+        Some(true),
+        "show_note_lines on a fragmented body should be rejected; got: {lines}"
+    );
+}
+
+/// Commit one new file in the fixture notebook so the worktree returns
+/// clean (the native Transaction engine refuses a dirty baseline).
+fn commit_file(env: &NbTestEnv, notebook_root: &std::path::Path, rel_path: &str) {
+    let mut git = Command::new("git");
+    env.configure_std(&mut git);
+    git.current_dir(notebook_root);
+    git.args(["add", rel_path]);
+    let add = git.output().expect("git add");
+    assert!(add.status.success(), "git add failed: {:?}", add);
+
+    let mut git = Command::new("git");
+    env.configure_std(&mut git);
+    git.current_dir(notebook_root);
+    git.args(["commit", "-m", "add fragmented fixture"]);
+    let commit = git.output().expect("git commit");
+    assert!(
+        commit.status.success(),
+        "git commit failed: {:?} {}",
+        commit,
+        String::from_utf8_lossy(&commit.stderr)
+    );
 }

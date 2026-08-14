@@ -30,7 +30,7 @@ if [[ "${1:-}" == "notebooks" && "${2:-}" == "show" ]]; then
     echo "${path}"
     exit 0
   fi
-  echo "! notebook not found: ${notebook}" >&2
+  echo "! Notebook not found: ${notebook}" >&2
   exit 1
 fi
 

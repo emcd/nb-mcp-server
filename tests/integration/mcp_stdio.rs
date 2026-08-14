@@ -1,5 +1,17 @@
 #![cfg(unix)]
 
+//! Stdio transport, schema, help, dispatch, and pure-CLI-read regressions.
+//!
+//! These tests run against the bash shim (`tests/support/nb`), which fakes
+//! the `nb` CLI. They are valid only for operations that still invoke the
+//! `nb` CLI (pure reads: `status`, `notebooks`, `list`, `search`, `folders`,
+//! non-recursive `tasks`) and for schema/help/dispatch behavior that never
+//! reaches a notebook. Mutations (`add`, `todo`, `bookmark`, `mkdir`,
+//! `delete`, `move`, `do`, `undo`), `show`, `import`, and recursive `tasks`
+//! run through nb-api 0.3's native `Transaction` engine / native file reads
+//! and are covered by the real-`nb` integration suite
+//! (`real_nb_typed_errors.rs`), not the shim.
+
 use std::{
     fs,
     io::{BufRead, BufReader, Write},
@@ -189,16 +201,6 @@ fn tool_text(response: &Value) -> String {
         .to_string()
 }
 
-fn rejection_text(response: &Value) -> Option<String> {
-    if let Some(text) = response["result"]["content"][0]["text"].as_str() {
-        return Some(text.to_string());
-    }
-    if let Some(message) = response["error"]["message"].as_str() {
-        return Some(message.to_string());
-    }
-    None
-}
-
 fn tool_json(response: &Value) -> Value {
     let content = &response["result"]["content"][0];
     if let Some(value) = content.get("json") {
@@ -219,6 +221,8 @@ fn is_protocol_error(response: &Value) -> bool {
 fn is_rejection(response: &Value) -> bool {
     is_tool_error(response) || is_protocol_error(response)
 }
+
+// Dispatch and validation regressions (never reach a notebook).
 
 #[test]
 fn nb_tool_rejects_non_object_args_payloads() {
@@ -278,35 +282,11 @@ fn nb_tool_reports_folder_required_before_running_nb() {
     );
     assert!(is_tool_error(&response), "response: {response}");
     assert!(tool_text(&response).contains("require `folder`"));
-}
-
-#[test]
-fn nb_tool_allows_top_level_notes_when_configured() {
-    let shim = shim_env();
-    let mut server = start_server_with_args(&shim, &["--allow-top-level-notes"]);
-    let response = server.call_nb(
-        "nb.add",
-        json!({"title": "No Folder", "content": "Allowed by config."}),
+    let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap_or_default();
+    assert!(
+        !calls.lines().any(|line| line.contains("add")),
+        "folder-required must be reported before invoking nb; calls: {calls}"
     );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Added:"));
-}
-
-#[test]
-fn nb_tool_warns_after_non_default_notebook_writes() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_nb(
-        "nb.add",
-        json!({
-            "notebook": "other-team",
-            "folder": "coordination",
-            "title": "Cross team note",
-            "content": "Should warn."
-        }),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Warning: wrote to notebook `other-team`"));
 }
 
 #[test]
@@ -341,24 +321,6 @@ fn nb_tool_rejects_selector_like_routing_fields() {
 }
 
 #[test]
-fn nb_tool_honors_copied_selectors_and_rejects_conflicts() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_nb(
-        "nb.show",
-        json!({"id": format!("{TEST_NOTEBOOK}:todos/mcp/35")}),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains(&format!("shown {TEST_NOTEBOOK}:todos/mcp/35")));
-    let conflict = server.call_nb(
-        "nb.show",
-        json!({"notebook": "other", "id": format!("{TEST_NOTEBOOK}:todos/mcp/35")}),
-    );
-    assert!(is_tool_error(&conflict), "response: {conflict}");
-    assert!(tool_text(&conflict).contains("ambiguous selector"));
-}
-
-#[test]
 fn help_tool_describes_routing_rules() {
     let shim = shim_env();
     let mut server = start_server(&shim);
@@ -377,7 +339,7 @@ fn help_tool_describes_routing_rules() {
     );
 }
 
-// First-class tool tests.
+// First-class pure-CLI-read tool tests.
 
 #[test]
 fn first_class_search_accepts_array_queries() {
@@ -395,40 +357,6 @@ fn first_class_search_requires_non_empty_queries() {
     let response = server.call_first_class("search", json!({"queries": []}));
     assert!(is_tool_error(&response), "response: {response}");
     assert!(tool_text(&response).contains("non-empty array"));
-}
-
-#[test]
-fn first_class_add_accepts_array_tags() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "add",
-        json!({
-            "folder": "procedures",
-            "title": "Test note with tags",
-            "content": "Content here.",
-            "tags": ["tag1", "tag2"]
-        }),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Added:"));
-}
-
-#[test]
-fn first_class_todo_accepts_array_tasks_and_tags() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "todo",
-        json!({
-            "folder": "procedures",
-            "title": "Test todo",
-            "tasks": ["step1", "step2"],
-            "tags": ["urgent"]
-        }),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Added:"));
 }
 
 #[test]
@@ -483,28 +411,42 @@ fn help_tool_describes_first_class_tools() {
     let response = server.call_help("nb");
     let help = tool_json(&response);
     let first_class = help["first_class_tools"].as_array().unwrap();
-    assert_eq!(first_class.len(), 17);
+    assert_eq!(first_class.len(), 23);
     let tool_names: Vec<&str> = first_class
         .iter()
         .map(|t| t["tool"].as_str().unwrap())
         .collect();
-    assert!(tool_names.contains(&"add"));
-    assert!(tool_names.contains(&"search"));
-    assert!(tool_names.contains(&"todo"));
-    assert!(tool_names.contains(&"list"));
-    assert!(tool_names.contains(&"status"));
-    assert!(tool_names.contains(&"notebooks"));
-    assert!(tool_names.contains(&"show"));
-    assert!(tool_names.contains(&"edit"));
-    assert!(tool_names.contains(&"delete"));
-    assert!(tool_names.contains(&"move"));
-    assert!(tool_names.contains(&"do"));
-    assert!(tool_names.contains(&"undo"));
-    assert!(tool_names.contains(&"tasks"));
-    assert!(tool_names.contains(&"bookmark"));
-    assert!(tool_names.contains(&"folders"));
-    assert!(tool_names.contains(&"mkdir"));
-    assert!(tool_names.contains(&"import"));
+    for tool in [
+        "add",
+        "search",
+        "todo",
+        "list",
+        "status",
+        "notebooks",
+        "show",
+        "delete",
+        "move",
+        "do",
+        "undo",
+        "tasks",
+        "bookmark",
+        "folders",
+        "mkdir",
+        "import",
+        "replace_note_body",
+        "edit_note_substring",
+        "edit_note_lines",
+        "retitle_note",
+        "edit_note_tags",
+        "show_note_lines",
+        "search_note_lines",
+    ] {
+        assert!(tool_names.contains(&tool), "missing {tool}");
+    }
+    assert!(
+        !tool_names.contains(&"edit"),
+        "legacy edit tool must not be listed"
+    );
 }
 
 #[test]
@@ -519,7 +461,6 @@ fn help_tool_provides_first_class_tool_schemas() {
         "status",
         "notebooks",
         "show",
-        "edit",
         "delete",
         "move",
         "do",
@@ -529,6 +470,13 @@ fn help_tool_provides_first_class_tool_schemas() {
         "folders",
         "mkdir",
         "import",
+        "replace_note_body",
+        "edit_note_substring",
+        "edit_note_lines",
+        "retitle_note",
+        "edit_note_tags",
+        "show_note_lines",
+        "search_note_lines",
     ] {
         let response = server.call_help(tool);
         let help = tool_json(&response);
@@ -551,7 +499,6 @@ fn tools_list_exposes_first_class_tools() {
         "status",
         "notebooks",
         "show",
-        "edit",
         "delete",
         "move",
         "do",
@@ -561,12 +508,23 @@ fn tools_list_exposes_first_class_tools() {
         "folders",
         "mkdir",
         "import",
+        "replace_note_body",
+        "edit_note_substring",
+        "edit_note_lines",
+        "retitle_note",
+        "edit_note_tags",
+        "show_note_lines",
+        "search_note_lines",
     ] {
         assert!(
             tool_names.contains(&tool),
             "tool {tool} not found in {tool_names:?}"
         );
     }
+    assert!(
+        !tool_names.contains(&"edit"),
+        "legacy edit tool must not be exposed"
+    );
 }
 
 #[test]
@@ -679,35 +637,45 @@ fn tools_list_optional_scalars_are_plain_types_not_nullable_unions() {
     // todo: description must be plain string (not anyOf/oneOf nullable union)
     let todo_tool = find_tool("todo");
     let todo_schema = &todo_tool["inputSchema"];
-    let desc_prop = &todo_schema["properties"]["description"];
+    let description_prop = &todo_schema["properties"]["description"];
     assert_eq!(
-        desc_prop["type"].as_str().unwrap(),
+        description_prop["type"].as_str().unwrap(),
         "string",
         "todo.description should be plain string"
     );
     assert!(
-        desc_prop.get("anyOf").is_none() && desc_prop.get("oneOf").is_none(),
+        description_prop.get("anyOf").is_none() && description_prop.get("oneOf").is_none(),
         "todo.description should not be a nullable union"
     );
-}
 
-#[test]
-fn first_class_todo_accepts_content_alias_for_description() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "todo",
-        json!({
-            "folder": "session-notes",
-            "title": "Alias test",
-            "content": "This should map to description via alias."
-        }),
+    // replace_note_body: fingerprint must be plain string (no nullable union)
+    let rnb = find_tool("replace_note_body");
+    let rnb_schema = &rnb["inputSchema"];
+    let fp_prop = &rnb_schema["properties"]["fingerprint"];
+    assert_eq!(
+        fp_prop["type"].as_str().unwrap(),
+        "string",
+        "replace_note_body.fingerprint should be plain string"
     );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Added:"));
+    assert!(
+        fp_prop.get("anyOf").is_none() && fp_prop.get("oneOf").is_none(),
+        "replace_note_body.fingerprint should not be a nullable union"
+    );
+    // target must be present (NoteTarget tagged union, not nullable)
+    assert!(
+        rnb_schema["properties"]["target"].is_object(),
+        "replace_note_body.target should be an object schema"
+    );
+    let required = rnb_schema["required"].as_array().unwrap();
+    for field in ["target", "new_body", "fingerprint"] {
+        assert!(
+            required.iter().any(|r| r.as_str() == Some(field)),
+            "replace_note_body should require {field}"
+        );
+    }
 }
 
-// Tests for new first-class tools (status, notebooks, show, edit, delete, move, do, undo, tasks, bookmark, folders, mkdir, import).
+// Pure-CLI-read first-class tools.
 
 #[test]
 fn first_class_status_works() {
@@ -728,107 +696,12 @@ fn first_class_notebooks_works() {
 }
 
 #[test]
-fn first_class_show_works() {
+fn first_class_tasks_non_recursive_works() {
     let shim = shim_env();
     let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "show",
-        json!({"id": format!("{TEST_NOTEBOOK}:session-notes/test.md")}),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("shown"));
-}
-
-#[test]
-fn first_class_edit_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "edit",
-        json!({
-            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-            "content": "Updated content.",
-            "mode": "overwrite",
-        }),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("edited"));
-}
-
-#[test]
-fn first_class_delete_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "delete",
-        json!({"id": format!("{TEST_NOTEBOOK}:session-notes/test.md")}),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Deleted"));
-}
-
-#[test]
-fn first_class_move_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "move",
-        json!({
-            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-            "destination": "archive/"
-        }),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Moved"));
-}
-
-#[test]
-fn first_class_do_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "do",
-        json!({"id": format!("{TEST_NOTEBOOK}:session-notes/test.md")}),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Completed"));
-}
-
-#[test]
-fn first_class_undo_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "undo",
-        json!({"id": format!("{TEST_NOTEBOOK}:session-notes/test.md")}),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Uncompleted"));
-}
-
-#[test]
-fn first_class_tasks_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class("tasks", json!({}));
+    let response = server.call_first_class("tasks", json!({"recursive": false}));
     assert!(!is_tool_error(&response), "response: {response}");
     assert!(tool_text(&response).contains("tasks"));
-}
-
-#[test]
-fn first_class_bookmark_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "bookmark",
-        json!({
-            "folder": "session-notes",
-            "url": "https://example.com",
-            "title": "Test Bookmark"
-        }),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("bookmarked"));
 }
 
 #[test]
@@ -838,30 +711,6 @@ fn first_class_folders_works() {
     let response = server.call_first_class("folders", json!({}));
     assert!(!is_tool_error(&response), "response: {response}");
     assert!(tool_text(&response).contains("folders"));
-}
-
-#[test]
-fn first_class_mkdir_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class("mkdir", json!({"path": "test-folder"}));
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("Created folder"));
-}
-
-#[test]
-fn first_class_import_works() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "import",
-        json!({
-            "folder": "session-notes",
-            "source": "https://example.com/test.md"
-        }),
-    );
-    assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("imported"));
 }
 
 #[test]
@@ -898,8 +747,7 @@ fn first_class_tasks_status_schema_is_plain_type() {
     }
 }
 
-// Cross-surface equivalence tests: verify multiplexed nb and first-class tools
-// produce equivalent behavior for the same parameters.
+// Cross-surface equivalence for pure-CLI reads.
 
 #[test]
 fn cross_surface_status_equivalence() {
@@ -925,134 +773,10 @@ fn cross_surface_list_equivalence() {
     assert_eq!(tool_text(&multiplexed), tool_text(&first_class));
 }
 
-#[test]
-fn cross_surface_add_equivalence() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    // Mutation: both should invoke the same nb command shape
-    let args = json!({
-        "folder": "session-notes",
-        "title": "Cross-surface test",
-        "content": "Testing equivalence."
-    });
-    let multiplexed = server.call_nb("nb.add", args.clone());
-    let first_class = server.call_first_class("add", args);
-    assert!(!is_tool_error(&multiplexed), "multiplexed: {multiplexed}");
-    assert!(!is_tool_error(&first_class), "first_class: {first_class}");
-    // Both should produce "Added:" output (same shim response)
-    assert!(tool_text(&multiplexed).contains("Added:"));
-    assert!(tool_text(&first_class).contains("Added:"));
-}
+// Removed `edit` surface regressions.
 
 #[test]
-fn cross_surface_todo_equivalence() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    // Mutation: both should invoke the same nb command shape
-    let args = json!({
-        "folder": "session-notes",
-        "title": "Cross-surface todo",
-        "tasks": ["step1", "step2"]
-    });
-    let multiplexed = server.call_nb("nb.todo", args.clone());
-    let first_class = server.call_first_class("todo", args);
-    assert!(!is_tool_error(&multiplexed), "multiplexed: {multiplexed}");
-    assert!(!is_tool_error(&first_class), "first_class: {first_class}");
-    // Both should produce "Added:" output (same shim response)
-    assert!(tool_text(&multiplexed).contains("Added:"));
-    assert!(tool_text(&first_class).contains("Added:"));
-}
-
-// Edit-mode contract regressions: edit.mode is required; canonical
-// overwrite is advertised; legacy replace remains compatible input.
-
-#[test]
-fn edit_mode_is_required_in_first_class_schema() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let tools = server.list_tools();
-    let tools = tools["result"]["tools"].as_array().unwrap();
-    let edit_tool = tools
-        .iter()
-        .find(|t| t["name"].as_str() == Some("edit"))
-        .expect("edit tool should exist");
-    let required = edit_tool["inputSchema"]["required"]
-        .as_array()
-        .expect("edit schema should expose required list");
-    let required_fields: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
-    assert!(
-        required_fields.contains(&"mode"),
-        "edit.mode should be required, got required: {required_fields:?}"
-    );
-
-    let schema = &edit_tool["inputSchema"];
-    let defs = &schema["$defs"];
-    let mode_ref = schema["properties"]["mode"]["$ref"]
-        .as_str()
-        .expect("mode should $ref a $defs entry");
-    let mode_def_name = mode_ref.trim_start_matches("#/$defs/");
-    let mode_enum = &defs[mode_def_name]["oneOf"];
-    let variants: Vec<String> = mode_enum
-        .as_array()
-        .expect("EditMode oneOf should be an array")
-        .iter()
-        .filter_map(|entry| entry["const"].as_str().map(str::to_string))
-        .collect();
-    for required_variant in ["overwrite", "append", "prepend"] {
-        assert!(
-            variants.iter().any(|v| v == required_variant),
-            "edit.mode should advertise {required_variant:?}, got variants: {variants:?}"
-        );
-    }
-    assert!(
-        !variants.iter().any(|v| v == "replace"),
-        "edit.mode must not advertise legacy replace, got variants: {variants:?}"
-    );
-}
-
-#[test]
-fn edit_mode_is_required_in_multiplexed_help() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let help = server.call_help("nb.edit");
-    assert!(!is_tool_error(&help), "help: {help}");
-    let help_text = tool_text(&help);
-    assert!(
-        help_text.contains("mode required"),
-        "nb.edit help should describe mode as required, got: {help_text}"
-    );
-    for variant in ["overwrite", "append", "prepend"] {
-        assert!(
-            help_text.contains(variant),
-            "nb.edit help should name {variant:?}, got: {help_text}"
-        );
-    }
-}
-
-#[test]
-fn first_class_edit_rejects_missing_mode_before_invoking_nb() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "edit",
-        json!({
-            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-            "content": "Updated content.",
-        }),
-    );
-    assert!(
-        is_rejection(&response),
-        "expected rejection when mode is missing, got: {response}"
-    );
-    let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap_or_default();
-    assert!(
-        !calls.lines().any(|line| line.starts_with("edit ")),
-        "edit must not be invoked when mode is missing; calls: {calls}"
-    );
-}
-
-#[test]
-fn multiplexed_edit_rejects_missing_mode_before_invoking_nb() {
+fn nb_edit_subcommand_is_rejected_with_recovery_guidance() {
     let shim = shim_env();
     let mut server = start_server(&shim);
     let response = server.call_nb(
@@ -1060,124 +784,54 @@ fn multiplexed_edit_rejects_missing_mode_before_invoking_nb() {
         json!({
             "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
             "content": "Updated content.",
+            "mode": "overwrite",
         }),
     );
+    assert!(is_tool_error(&response), "response: {response}");
+    let text = tool_text(&response);
     assert!(
-        is_rejection(&response),
-        "expected rejection when mode is missing, got: {response}"
+        text.contains("removed"),
+        "nb.edit rejection should mention removal, got: {text}"
     );
-    let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap_or_default();
-    assert!(
-        !calls.lines().any(|line| line.starts_with("edit ")),
-        "edit must not be invoked when mode is missing; calls: {calls}"
-    );
-}
-
-#[test]
-fn edit_accepts_legacy_replace_input() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_first_class(
-        "edit",
-        json!({
-            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-            "content": "Updated content.",
-            "mode": "replace",
-        }),
-    );
-    assert!(
-        !is_rejection(&response),
-        "legacy mode:replace must remain compatible, got: {response}"
-    );
-    assert!(tool_text(&response).contains("edited"));
-}
-
-#[test]
-fn multiplexed_edit_accepts_legacy_replace_input() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let response = server.call_nb(
-        "nb.edit",
-        json!({
-            "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-            "content": "Updated content.",
-            "mode": "replace",
-        }),
-    );
-    assert!(
-        !is_rejection(&response),
-        "legacy mode:replace must remain compatible, got: {response}"
-    );
-    assert!(tool_text(&response).contains("edited"));
-}
-
-// Cross-surface equivalence for edit behavior: every edit contract,
-// observed through both surfaces, must produce identical wording.
-
-#[test]
-fn edit_mode_rejection_is_parity_across_surfaces() {
-    let shim = shim_env();
-    let mut server = start_server(&shim);
-    let payload = json!({
-        "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-        "content": "Updated content.",
-    });
-    let first_class = server.call_first_class("edit", payload.clone());
-    let multiplexed = server.call_nb("nb.edit", payload);
-    assert!(
-        is_rejection(&first_class),
-        "first-class edit should reject missing mode, got: {first_class}"
-    );
-    assert!(
-        is_rejection(&multiplexed),
-        "multiplexed edit should reject missing mode, got: {multiplexed}"
-    );
-    let first_class_text = rejection_text(&first_class).unwrap_or_else(|| {
-        panic!("direct edit rejection produced no diagnostic text: {first_class}")
-    });
-    let multiplexed_text = rejection_text(&multiplexed).unwrap_or_else(|| {
-        panic!("multiplexed edit rejection produced no diagnostic text: {multiplexed}")
-    });
-    assert!(
-        !first_class_text.is_empty() && !multiplexed_text.is_empty(),
-        "both surfaces should produce a missing-mode diagnostic, got direct={first_class_text:?} multiplexed={multiplexed_text:?}"
-    );
-    assert_eq!(
-        first_class_text, multiplexed_text,
-        "direct and multiplexed missing-mode errors must produce identical wording"
-    );
-    for value in ["overwrite", "append", "prepend"] {
+    for tool in [
+        "replace_note_body",
+        "edit_note_substring",
+        "edit_note_lines",
+        "retitle_note",
+        "edit_note_tags",
+    ] {
         assert!(
-            first_class_text.contains(value),
-            "missing-mode diagnostic should name {value}, got: {first_class_text}"
+            text.contains(tool),
+            "nb.edit rejection should name {tool}, got: {text}"
         );
     }
 }
 
 #[test]
-fn edit_overwrite_success_is_parity_across_surfaces() {
+fn direct_only_tools_have_no_multiplexed_alias() {
     let shim = shim_env();
     let mut server = start_server(&shim);
-    let payload = json!({
-        "id": format!("{TEST_NOTEBOOK}:session-notes/test.md"),
-        "content": "Updated content.",
-        "mode": "overwrite",
-    });
-    let first_class = server.call_first_class("edit", payload.clone());
-    let multiplexed = server.call_nb("nb.edit", payload);
-    assert!(
-        !is_rejection(&first_class),
-        "first-class overwrite should succeed, got: {first_class}"
-    );
-    assert!(
-        !is_rejection(&multiplexed),
-        "multiplexed overwrite should succeed, got: {multiplexed}"
-    );
-    assert_eq!(
-        tool_text(&first_class),
-        tool_text(&multiplexed),
-        "direct and multiplexed edit success responses must match"
-    );
+    for tool in [
+        "replace_note_body",
+        "edit_note_substring",
+        "edit_note_lines",
+        "retitle_note",
+        "edit_note_tags",
+        "show_note_lines",
+        "search_note_lines",
+    ] {
+        let response = server.call_nb(tool, json!({}));
+        assert!(is_tool_error(&response), "{tool}: {response}");
+        let text = tool_text(&response);
+        assert!(
+            text.contains("direct-only"),
+            "{tool} rejection should say direct-only, got: {text}"
+        );
+        assert!(
+            text.contains(tool),
+            "{tool} rejection should name the direct tool, got: {text}"
+        );
+    }
 }
 
 // Empty-list passthrough: the MCP layer must pass `list` and `folders`

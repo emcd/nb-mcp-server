@@ -7,12 +7,15 @@ use rmcp::{
     transport::stdio,
 };
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use crate::Config;
 use crate::git_signing;
-use crate::nb::{EditMode, NbClient, NbError, SearchMode, TaskStatus};
+use crate::nb::{
+    BodyFragment, ByteString, CommitOutcome, DocumentKind, Fingerprint, LineEdit, NbClient,
+    NbError, NoteTarget, Occurrence, SearchMode, ShowNote, TaskStatus, TodoState,
+};
 
 #[derive(Clone)]
 struct McpServer {
@@ -79,22 +82,6 @@ struct ShowArgs {
     #[serde(alias = "selector")]
     id: String,
     /// Bare notebook name to read from (uses default if not specified).
-    #[serde(default)]
-    #[schemars(with = "String")]
-    notebook: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct EditArgs {
-    /// Notebook selector, note ID, filename, or title to edit; not a filesystem path.
-    #[serde(alias = "selector")]
-    id: String,
-    /// New content for the note.
-    content: String,
-    /// Edit mode: `overwrite` (replaces every byte of the note body), `append`, or `prepend`.
-    mode: EditMode,
-    /// Bare notebook name containing the note (uses default if not specified).
     #[serde(default)]
     #[schemars(with = "String")]
     notebook: Option<String>,
@@ -319,6 +306,168 @@ struct ImportArgs {
     notebook: Option<String>,
 }
 
+// Body-aware and line tool argument structs (direct-only, 0.3 surface).
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ReplaceNoteBodyArgs {
+    /// Address an existing note by selector or notebook-relative path.
+    target: NoteTarget,
+    /// New body content as base64 bytes. Replaces the entire note body.
+    new_body: ByteString,
+    /// Body fingerprint from a preceding `show` (`b3:` + 64 lowercase hex). Required to prevent stale overwrites.
+    fingerprint: String,
+    /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct EditNoteSubstringArgs {
+    /// Address an existing note by selector or notebook-relative path.
+    target: NoteTarget,
+    /// Byte pattern to find, as base64 bytes.
+    pattern: ByteString,
+    /// Replacement bytes, as base64.
+    replacement: ByteString,
+    /// Occurrence selector: `first`, `all`, or `nth` (with `n`).
+    occurrence: Occurrence,
+    /// Expected number of matches; mismatch rejects the edit.
+    expected_count: u32,
+    /// Optional body fingerprint from a preceding `show`; when present, mismatch rejects the edit.
+    #[serde(default)]
+    #[schemars(with = "String")]
+    fingerprint: Option<String>,
+    /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct EditNoteLinesArgs {
+    /// Address an existing note by selector or notebook-relative path.
+    target: NoteTarget,
+    /// Batch of disjoint line edits (insert/delete/replace) against anchors from one original snapshot.
+    edits: Vec<LineEdit>,
+    /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct RetitleNoteArgs {
+    /// Address an existing note by selector or notebook-relative path.
+    target: NoteTarget,
+    /// New title bytes as base64. Does not change the note path.
+    title: ByteString,
+    /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct EditNoteTagsArgs {
+    /// Address an existing note by selector or notebook-relative path.
+    target: NoteTarget,
+    /// Tags to add (with or without # prefix).
+    #[serde(default)]
+    add: Vec<String>,
+    /// Tags to remove (with or without # prefix).
+    #[serde(default)]
+    remove: Vec<String>,
+    /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ShowNoteLinesArgs {
+    /// Address an existing note by selector or notebook-relative path.
+    target: NoteTarget,
+    /// 1-based starting line; defaults to 1.
+    #[serde(default)]
+    #[schemars(with = "u32")]
+    offset: Option<u32>,
+    /// Maximum lines to return; defaults to 100.
+    #[serde(default)]
+    #[schemars(with = "u32")]
+    limit: Option<u32>,
+    /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
+    notebook: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct SearchNoteLinesArgs {
+    /// Address an existing note by selector or notebook-relative path.
+    target: NoteTarget,
+    /// Byte pattern to search for within body lines, as base64 bytes.
+    pattern: ByteString,
+    /// Bare notebook name containing the note (uses default if not specified).
+    #[serde(default)]
+    #[schemars(with = "String")]
+    notebook: Option<String>,
+}
+
+/// Structured `show` envelope: base64 authority plus optional lossy text.
+#[derive(Debug, Serialize)]
+struct ShowEnvelope {
+    selector: String,
+    path: String,
+    kind: DocumentKind,
+    todo_state: Option<TodoState>,
+    title: Option<ByteString>,
+    title_text: Option<String>,
+    tags: Vec<String>,
+    body_fragments: Vec<BodyFragment>,
+    body_contiguous: bool,
+    body: ByteString,
+    fingerprint: Fingerprint,
+    source: ByteString,
+    /// Lossy UTF-8 text of `source`; present only when source is valid UTF-8.
+    text: Option<String>,
+    /// True when `source` is not valid UTF-8; `text` is then absent.
+    non_utf8: bool,
+}
+
+impl ShowEnvelope {
+    fn from_show(shown: ShowNote) -> Result<Self, NbError> {
+        let source_bytes = shown.source.as_bytes()?;
+        let (text, non_utf8) = match std::str::from_utf8(&source_bytes) {
+            Ok(s) => (Some(s.to_string()), false),
+            Err(_) => (None, true),
+        };
+        Ok(Self {
+            selector: shown.selector,
+            path: shown.path,
+            kind: shown.kind,
+            todo_state: shown.todo_state,
+            title: shown.title,
+            title_text: shown.title_text,
+            tags: shown.tags,
+            body_fragments: shown.body_fragments,
+            body_contiguous: shown.body_contiguous,
+            body: shown.body,
+            fingerprint: shown.fingerprint,
+            source: shown.source,
+            text,
+            non_utf8,
+        })
+    }
+}
+
 #[tool_router]
 impl McpServer {
     fn new(config: &Config) -> Result<Self> {
@@ -328,7 +477,7 @@ impl McpServer {
     }
 
     #[tool(
-        description = r#"nb note-taking tool. Invoke with {"command":"nb.<subcommand>","args":{...}} and pass args as a JSON object (stringified JSON is not accepted). Unknown args are rejected. This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. notebook must be a bare notebook name; use folder for folders and id/selector for notes. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, edit, delete, move, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. Use `help` for exact schemas."#
+        description = r#"nb note-taking tool. Invoke with {"command":"nb.<subcommand>","args":{...}} and pass args as a JSON object (stringified JSON is not accepted). Unknown args are rejected. This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. notebook must be a bare notebook name; use folder for folders and id/selector for notes. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, delete, move, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. The legacy edit command is removed; use the direct body-aware tools (replace_note_body, edit_note_substring, edit_note_lines, retitle_note, edit_note_tags) and line tools (show_note_lines, search_note_lines). Use `help` for exact schemas."#
     )]
     async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
@@ -410,7 +559,7 @@ impl McpServer {
 
     #[tool(
         name = "show",
-        description = "Read a note's content. Use id (alias: selector) to identify the note."
+        description = "Read a note's content as a structured envelope: base64 source/body are byte-exact; text is lossy UTF-8 (absent with non_utf8=true when not valid UTF-8). Use id (alias: selector) to identify the note."
     )]
     async fn nb_show(
         &self,
@@ -420,24 +569,80 @@ impl McpServer {
     }
 
     #[tool(
-        name = "edit",
-        description = "Update a note's content. Use id (alias: selector) to identify the note. mode is required: overwrite (replaces every byte of the note body), append, or prepend.",
-        input_schema = ::std::sync::Arc::new(
-            json_schema_for::<EditArgs>()
-                .as_object()
-                .cloned()
-                .unwrap_or_default(),
-        ),
+        name = "replace_note_body",
+        description = "Replace the entire body of a note. Requires the body fingerprint from a preceding `show` to prevent stale overwrites. Direct-only tool; no multiplexed alias."
     )]
-    async fn nb_edit(
+    async fn nb_replace_note_body(
         &self,
-        Parameters(args): Parameters<serde_json::Value>,
+        Parameters(args): Parameters<ReplaceNoteBodyArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let args = match parse_edit_args(args) {
-            Ok(args) => args,
-            Err(message) => return Ok(tool_error(message)),
-        };
-        self.dispatch_edit(args).await
+        self.dispatch_replace_note_body(args).await
+    }
+
+    #[tool(
+        name = "edit_note_substring",
+        description = "Edit a note body by replacing one or more occurrences of a byte pattern. `expected_count` must match the actual match count; an optional fingerprint guards against stale edits. Direct-only tool; no multiplexed alias."
+    )]
+    async fn nb_edit_note_substring(
+        &self,
+        Parameters(args): Parameters<EditNoteSubstringArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_edit_note_substring(args).await
+    }
+
+    #[tool(
+        name = "edit_note_lines",
+        description = "Apply a batch of disjoint line edits (insert/delete/replace) to a note body, verified against anchors from one original snapshot. Direct-only tool; no multiplexed alias."
+    )]
+    async fn nb_edit_note_lines(
+        &self,
+        Parameters(args): Parameters<EditNoteLinesArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_edit_note_lines(args).await
+    }
+
+    #[tool(
+        name = "retitle_note",
+        description = "Change a note's title without changing its path. Direct-only tool; no multiplexed alias."
+    )]
+    async fn nb_retitle_note(
+        &self,
+        Parameters(args): Parameters<RetitleNoteArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_retitle_note(args).await
+    }
+
+    #[tool(
+        name = "edit_note_tags",
+        description = "Add and/or remove tags on a note in one atomic operation. Direct-only tool; no multiplexed alias."
+    )]
+    async fn nb_edit_note_tags(
+        &self,
+        Parameters(args): Parameters<EditNoteTagsArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_edit_note_tags(args).await
+    }
+
+    #[tool(
+        name = "show_note_lines",
+        description = "List body lines of a contiguous-body note with anchors and window metadata. Direct-only tool; no multiplexed alias."
+    )]
+    async fn nb_show_note_lines(
+        &self,
+        Parameters(args): Parameters<ShowNoteLinesArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_show_note_lines(args).await
+    }
+
+    #[tool(
+        name = "search_note_lines",
+        description = "Search body line texts for a byte pattern and return anchored matching lines. Direct-only tool; no multiplexed alias."
+    )]
+    async fn nb_search_note_lines(
+        &self,
+        Parameters(args): Parameters<SearchNoteLinesArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.dispatch_search_note_lines(args).await
     }
 
     #[tool(
@@ -603,56 +808,63 @@ impl McpServer {
         let result = match subcommand {
             "status" => {
                 let args: StatusArgs = parse_or_return!(StatusArgs, call.args);
-                self.nb.show_notebook_status(args.notebook.as_deref()).await
+                text_result(self.nb.show_notebook_status(args.notebook.as_deref()).await)
             }
-            "notebooks" => self.nb.list_notebooks().await,
+            "notebooks" => text_result(self.nb.list_notebooks().await),
             "add" => {
                 let args: AddArgs = parse_or_return!(AddArgs, call.args);
-                self.nb
-                    .add_note(
-                        args.title.as_deref(),
-                        &args.content,
-                        &args.tags,
-                        args.folder.as_deref(),
-                        args.notebook.as_deref(),
-                    )
-                    .await
+                outcome_result(
+                    self.nb
+                        .add_note(
+                            args.title.as_deref(),
+                            &args.content,
+                            &args.tags,
+                            args.folder.as_deref(),
+                            args.notebook.as_deref(),
+                        )
+                        .await,
+                )
             }
             "show" => {
                 let args: ShowArgs = parse_or_return!(ShowArgs, call.args);
-                self.nb.show_note(&args.id, args.notebook.as_deref()).await
+                show_result(self.nb.show_note(&args.id, args.notebook.as_deref()).await)
             }
             "edit" => {
-                let args: EditArgs = match parse_edit_args(call.args) {
-                    Ok(args) => args,
-                    Err(message) => return Ok(tool_error(message)),
-                };
-                self.nb
-                    .edit_note(&args.id, &args.content, args.mode, args.notebook.as_deref())
-                    .await
+                return Ok(tool_error(
+                    "Invalid command: edit was removed in the nb-api 0.3 cutover.\n\
+                     Hint: use the direct body-aware tools replace_note_body, \
+                     edit_note_substring, edit_note_lines, retitle_note, or \
+                     edit_note_tags.",
+                ));
             }
             "delete" => {
                 let args: DeleteArgs = parse_or_return!(DeleteArgs, call.args);
-                self.nb
-                    .delete_note(&args.id, args.notebook.as_deref())
-                    .await
+                outcome_result(
+                    self.nb
+                        .delete_note(&args.id, args.notebook.as_deref())
+                        .await,
+                )
             }
             "move" => {
                 let args: MoveArgs = parse_or_return!(MoveArgs, call.args);
-                self.nb
-                    .move_note(&args.id, &args.destination, args.notebook.as_deref())
-                    .await
+                outcome_result(
+                    self.nb
+                        .move_note(&args.id, &args.destination, args.notebook.as_deref())
+                        .await,
+                )
             }
             "list" => {
                 let args: ListArgs = parse_or_return!(ListArgs, call.args);
-                self.nb
-                    .list_notes(
-                        args.folder.as_deref(),
-                        &args.tags,
-                        args.limit,
-                        args.notebook.as_deref(),
-                    )
-                    .await
+                text_result(
+                    self.nb
+                        .list_notes(
+                            args.folder.as_deref(),
+                            &args.tags,
+                            args.limit,
+                            args.notebook.as_deref(),
+                        )
+                        .await,
+                )
             }
             "search" => {
                 let args: SearchArgs = parse_or_return!(SearchArgs, call.args);
@@ -663,88 +875,118 @@ impl McpServer {
                          Hint: pass queries as an array of one or more strings.",
                     ));
                 }
-                self.nb
-                    .search_notes(
-                        &args.queries,
-                        args.mode,
-                        &args.tags,
-                        args.folder.as_deref(),
-                        args.notebook.as_deref(),
-                    )
-                    .await
+                text_result(
+                    self.nb
+                        .search_notes(
+                            &args.queries,
+                            args.mode,
+                            &args.tags,
+                            args.folder.as_deref(),
+                            args.notebook.as_deref(),
+                        )
+                        .await,
+                )
             }
             "todo" => {
                 let args: TodoArgs = parse_or_return!(TodoArgs, call.args);
-                self.nb
-                    .add_todo(
-                        &args.title,
-                        args.description.as_deref(),
-                        &args.tasks,
-                        &args.tags,
-                        args.folder.as_deref(),
-                        args.notebook.as_deref(),
-                    )
-                    .await
+                outcome_result(
+                    self.nb
+                        .add_todo(
+                            &args.title,
+                            args.description.as_deref(),
+                            &args.tasks,
+                            &args.tags,
+                            args.folder.as_deref(),
+                            args.notebook.as_deref(),
+                        )
+                        .await,
+                )
             }
             "do" => {
                 let args: TaskIdArgs = parse_or_return!(TaskIdArgs, call.args);
-                self.nb
-                    .mark_task_done(&args.id, args.task_number, args.notebook.as_deref())
-                    .await
+                outcome_result(
+                    self.nb
+                        .mark_task_done(&args.id, args.task_number, args.notebook.as_deref())
+                        .await,
+                )
             }
             "undo" => {
                 let args: TaskIdArgs = parse_or_return!(TaskIdArgs, call.args);
-                self.nb
-                    .unmark_task_done(&args.id, args.task_number, args.notebook.as_deref())
-                    .await
+                outcome_result(
+                    self.nb
+                        .unmark_task_done(&args.id, args.task_number, args.notebook.as_deref())
+                        .await,
+                )
             }
             "tasks" => {
                 let args: TasksArgs = parse_or_return!(TasksArgs, call.args);
-                self.nb
-                    .list_tasks(
-                        args.folder.as_deref(),
-                        args.status,
-                        args.recursive,
-                        args.notebook.as_deref(),
-                    )
-                    .await
+                text_result(
+                    self.nb
+                        .list_tasks(
+                            args.folder.as_deref(),
+                            args.status,
+                            args.recursive,
+                            args.notebook.as_deref(),
+                        )
+                        .await,
+                )
             }
             "bookmark" => {
                 let args: BookmarkArgs = parse_or_return!(BookmarkArgs, call.args);
-                self.nb
-                    .add_bookmark(
-                        &args.url,
-                        args.title.as_deref(),
-                        &args.tags,
-                        args.comment.as_deref(),
-                        args.folder.as_deref(),
-                        args.notebook.as_deref(),
-                    )
-                    .await
+                outcome_result(
+                    self.nb
+                        .add_bookmark(
+                            &args.url,
+                            args.title.as_deref(),
+                            &args.tags,
+                            args.comment.as_deref(),
+                            args.folder.as_deref(),
+                            args.notebook.as_deref(),
+                        )
+                        .await,
+                )
             }
             "folders" => {
                 let args: FoldersArgs = parse_or_return!(FoldersArgs, call.args);
-                self.nb
-                    .list_folders(args.parent.as_deref(), args.notebook.as_deref())
-                    .await
+                text_result(
+                    self.nb
+                        .list_folders(args.parent.as_deref(), args.notebook.as_deref())
+                        .await,
+                )
             }
             "mkdir" => {
                 let args: MkdirArgs = parse_or_return!(MkdirArgs, call.args);
-                self.nb
-                    .add_folder(&args.path, args.notebook.as_deref())
-                    .await
+                outcome_result(
+                    self.nb
+                        .add_folder(&args.path, args.notebook.as_deref())
+                        .await,
+                )
             }
             "import" => {
                 let args: ImportArgs = parse_or_return!(ImportArgs, call.args);
-                self.nb
-                    .import_note(
-                        &args.source,
-                        args.folder.as_deref(),
-                        args.filename.as_deref(),
-                        args.convert,
-                        args.notebook.as_deref(),
-                    )
-                    .await
+                text_result(
+                    self.nb
+                        .import_note(
+                            &args.source,
+                            args.folder.as_deref(),
+                            args.filename.as_deref(),
+                            args.convert,
+                            args.notebook.as_deref(),
+                        )
+                        .await,
+                )
+            }
+            "replace_note_body"
+            | "edit_note_substring"
+            | "edit_note_lines"
+            | "retitle_note"
+            | "edit_note_tags"
+            | "show_note_lines"
+            | "search_note_lines" => {
+                return Ok(tool_error(format!(
+                    "Invalid command: {subcommand} is a direct-only tool with no multiplexed alias.\n\
+                     Hint: invoke the direct `{subcommand}` tool instead of the multiplexed `nb` tool."
+                )));
             }
             _ => {
                 return Ok(tool_error(format!(
@@ -754,7 +996,7 @@ impl McpServer {
             }
         };
 
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(result)
     }
 
     // First-class dispatch methods.
@@ -771,7 +1013,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
     }
 
     async fn dispatch_search(&self, args: SearchArgs) -> Result<CallToolResult, McpError> {
@@ -792,7 +1034,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(text_result(result))
     }
 
     async fn dispatch_todo(&self, args: TodoArgs) -> Result<CallToolResult, McpError> {
@@ -807,7 +1049,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
     }
 
     async fn dispatch_list(&self, args: ListArgs) -> Result<CallToolResult, McpError> {
@@ -820,30 +1062,148 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(text_result(result))
     }
 
     async fn dispatch_status(&self, args: StatusArgs) -> Result<CallToolResult, McpError> {
         let result = self.nb.show_notebook_status(args.notebook.as_deref()).await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(text_result(result))
     }
 
     async fn dispatch_notebooks(&self) -> Result<CallToolResult, McpError> {
         let result = self.nb.list_notebooks().await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(text_result(result))
     }
 
     async fn dispatch_show(&self, args: ShowArgs) -> Result<CallToolResult, McpError> {
         let result = self.nb.show_note(&args.id, args.notebook.as_deref()).await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(show_result(result))
     }
 
-    async fn dispatch_edit(&self, args: EditArgs) -> Result<CallToolResult, McpError> {
+    async fn dispatch_replace_note_body(
+        &self,
+        args: ReplaceNoteBodyArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let fingerprint = match parse_fingerprint(&args.fingerprint) {
+            Ok(fp) => fp,
+            Err(err) => return Ok(nb_error_result(err)),
+        };
+        let new_body = match args.new_body.as_bytes() {
+            Ok(bytes) => bytes,
+            Err(err) => return Ok(nb_error_result(err)),
+        };
         let result = self
             .nb
-            .edit_note(&args.id, &args.content, args.mode, args.notebook.as_deref())
+            .replace_note_body(args.target, new_body, fingerprint, args.notebook.as_deref())
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
+    }
+
+    async fn dispatch_edit_note_substring(
+        &self,
+        args: EditNoteSubstringArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let fingerprint = match args.fingerprint.as_deref() {
+            Some(value) => match parse_fingerprint(value) {
+                Ok(fp) => Some(fp),
+                Err(err) => return Ok(nb_error_result(err)),
+            },
+            None => None,
+        };
+        let pattern = match args.pattern.as_bytes() {
+            Ok(bytes) => bytes,
+            Err(err) => return Ok(nb_error_result(err)),
+        };
+        let replacement = match args.replacement.as_bytes() {
+            Ok(bytes) => bytes,
+            Err(err) => return Ok(nb_error_result(err)),
+        };
+        let result = self
+            .nb
+            .edit_note_substring(
+                args.target,
+                pattern,
+                replacement,
+                args.occurrence,
+                args.expected_count,
+                fingerprint,
+                args.notebook.as_deref(),
+            )
+            .await;
+        Ok(outcome_result(result))
+    }
+
+    async fn dispatch_edit_note_lines(
+        &self,
+        args: EditNoteLinesArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .edit_note_lines(args.target, args.edits, args.notebook.as_deref())
+            .await;
+        Ok(outcome_result(result))
+    }
+
+    async fn dispatch_retitle_note(
+        &self,
+        args: RetitleNoteArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let title = match args.title.as_bytes() {
+            Ok(bytes) => bytes,
+            Err(err) => return Ok(nb_error_result(err)),
+        };
+        let result = self
+            .nb
+            .retitle_note(args.target, title, args.notebook.as_deref())
+            .await;
+        Ok(outcome_result(result))
+    }
+
+    async fn dispatch_edit_note_tags(
+        &self,
+        args: EditNoteTagsArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .edit_note_tags(
+                args.target,
+                &args.add,
+                &args.remove,
+                args.notebook.as_deref(),
+            )
+            .await;
+        Ok(outcome_result(result))
+    }
+
+    async fn dispatch_show_note_lines(
+        &self,
+        args: ShowNoteLinesArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .nb
+            .show_note_lines(
+                args.target,
+                args.offset,
+                args.limit,
+                args.notebook.as_deref(),
+            )
+            .await;
+        Ok(typed_result(result))
+    }
+
+    async fn dispatch_search_note_lines(
+        &self,
+        args: SearchNoteLinesArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let pattern = match args.pattern.as_bytes() {
+            Ok(bytes) => bytes,
+            Err(err) => return Ok(nb_error_result(err)),
+        };
+        let result = self
+            .nb
+            .search_note_lines(args.target, &pattern, args.notebook.as_deref())
+            .await;
+        Ok(typed_result(result))
     }
 
     async fn dispatch_delete(&self, args: DeleteArgs) -> Result<CallToolResult, McpError> {
@@ -851,7 +1211,7 @@ impl McpServer {
             .nb
             .delete_note(&args.id, args.notebook.as_deref())
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
     }
 
     async fn dispatch_move(&self, args: MoveArgs) -> Result<CallToolResult, McpError> {
@@ -859,7 +1219,7 @@ impl McpServer {
             .nb
             .move_note(&args.id, &args.destination, args.notebook.as_deref())
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
     }
 
     async fn dispatch_do(&self, args: TaskIdArgs) -> Result<CallToolResult, McpError> {
@@ -867,7 +1227,7 @@ impl McpServer {
             .nb
             .mark_task_done(&args.id, args.task_number, args.notebook.as_deref())
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
     }
 
     async fn dispatch_undo(&self, args: TaskIdArgs) -> Result<CallToolResult, McpError> {
@@ -875,7 +1235,7 @@ impl McpServer {
             .nb
             .unmark_task_done(&args.id, args.task_number, args.notebook.as_deref())
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
     }
 
     async fn dispatch_tasks(&self, args: TasksArgs) -> Result<CallToolResult, McpError> {
@@ -888,7 +1248,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(text_result(result))
     }
 
     async fn dispatch_bookmark(&self, args: BookmarkArgs) -> Result<CallToolResult, McpError> {
@@ -903,7 +1263,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
     }
 
     async fn dispatch_folders(&self, args: FoldersArgs) -> Result<CallToolResult, McpError> {
@@ -911,7 +1271,7 @@ impl McpServer {
             .nb
             .list_folders(args.parent.as_deref(), args.notebook.as_deref())
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(text_result(result))
     }
 
     async fn dispatch_mkdir(&self, args: MkdirArgs) -> Result<CallToolResult, McpError> {
@@ -919,7 +1279,7 @@ impl McpServer {
             .nb
             .add_folder(&args.path, args.notebook.as_deref())
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(outcome_result(result))
     }
 
     async fn dispatch_import(&self, args: ImportArgs) -> Result<CallToolResult, McpError> {
@@ -933,7 +1293,7 @@ impl McpServer {
                 args.notebook.as_deref(),
             )
             .await;
-        Ok(nb_error_to_call_tool_result(result))
+        Ok(text_result(result))
     }
 }
 
@@ -970,58 +1330,63 @@ fn parse_args<T: serde::de::DeserializeOwned + Default>(
     })
 }
 
-fn parse_edit_args(value: serde_json::Value) -> Result<EditArgs, String> {
-    if value.is_null() {
-        return Err("Invalid args for edit.\n\
-             Reason: args is null.\n\
-             Hint: choose overwrite, append, or prepend for mode; id and content are required."
-            .to_string());
-    }
-    let value = match value {
-        serde_json::Value::Object(map) => {
-            if map.is_empty() {
-                return Err("Invalid args for edit.\n\
-                     Reason: mode is required.\n\
-                     Hint: choose overwrite, append, or prepend for mode."
-                    .to_string());
-            }
-            serde_json::Value::Object(map)
-        }
-        other => {
-            return Err(format!(
-                "Invalid args for edit.\n\
-                 Reason: args must be a JSON object, got {}.\n\
-                 Hint: pass args as a JSON object (not a stringified JSON payload).",
-                json_type_name(&other)
-            ));
-        }
-    };
-
-    serde_json::from_value::<EditArgs>(value).map_err(|err| {
-        if err.to_string().contains("missing field `mode`") {
-            "Invalid args for edit.\n\
-             Reason: mode is required.\n\
-             Hint: choose overwrite, append, or prepend for mode."
-                .to_string()
-        } else {
-            format!(
-                "Invalid args for edit.\n\
-                 Reason: {}.\n\
-                 Hint: choose overwrite, append, or prepend for mode.",
-                err
-            )
-        }
-    })
+fn parse_fingerprint(value: &str) -> Result<Fingerprint, NbError> {
+    value.parse()
 }
 
 fn tool_error(message: impl Into<String>) -> CallToolResult {
     CallToolResult::error(vec![Content::text(message.into())])
 }
 
-fn nb_error_to_call_tool_result(result: Result<String, NbError>) -> CallToolResult {
+/// Present a `Result<String, NbError>` (reads) as a text tool result.
+fn text_result(result: Result<String, NbError>) -> CallToolResult {
     match result {
         Ok(output) => CallToolResult::success(vec![Content::text(output)]),
         Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+    }
+}
+
+/// Present a `Result<CommitOutcome, NbError>` as a structured JSON tool result.
+fn outcome_result(result: Result<CommitOutcome, NbError>) -> CallToolResult {
+    match result {
+        Ok(outcome) => json_success(&outcome),
+        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+    }
+}
+
+/// Present a `Result<ShowNote, NbError>` as the structured envelope.
+fn show_result(result: Result<ShowNote, NbError>) -> CallToolResult {
+    match result {
+        Ok(shown) => match ShowEnvelope::from_show(shown) {
+            Ok(envelope) => json_success(&envelope),
+            Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        },
+        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+    }
+}
+
+/// Present a serializable typed result (lines/search lines) as JSON.
+fn typed_result<T: Serialize>(result: Result<T, NbError>) -> CallToolResult {
+    match result {
+        Ok(value) => json_success(&value),
+        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+    }
+}
+
+/// Present an `Err(NbError)` as a structured error result.
+fn nb_error_result(err: NbError) -> CallToolResult {
+    CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+}
+
+fn json_success(value: &impl Serialize) -> CallToolResult {
+    match serde_json::to_value(value) {
+        Ok(json) => CallToolResult::success(vec![
+            Content::json(json)
+                .unwrap_or_else(|_| Content::text("failed to serialize result".to_string())),
+        ]),
+        Err(_) => CallToolResult::success(vec![Content::text(
+            "failed to serialize result".to_string(),
+        )]),
     }
 }
 
@@ -1043,6 +1408,113 @@ fn present_nb_error(err: &NbError) -> String {
              (`{heading}`); both produce a top-level title and double-render.\n\
              Hint: remove the duplicate H1 from content, or omit the separate \
              `title` field."
+        ),
+        NbError::FingerprintMismatch { target, .. } => format!(
+            "Stale edit rejected: body fingerprint does not match the current \
+             note `{}`.\n\
+             Hint: re-read the note with `show` and retry with the fresh \
+             fingerprint.",
+            target.value()
+        ),
+        NbError::AnchorMismatch {
+            target,
+            number,
+            guidance,
+        } => format!(
+            "Stale edit rejected for `{target}` line {number}: {guidance}.\n\
+             Hint: re-read the note lines with `show_note_lines` and retry with \
+             fresh anchors."
+        ),
+        NbError::OccurrenceMismatch { expected, actual } => format!(
+            "Substring edit rejected: expected {expected} match(es) but found \
+             {actual}.\n\
+             Hint: re-read the note and correct expected_count."
+        ),
+        NbError::OverlappingEdits { indices } => format!(
+            "Line edit batch rejected: edits at indices {indices:?} overlap.\n\
+             Hint: provide disjoint edits against one original snapshot."
+        ),
+        NbError::InvalidLineWindow {
+            offset,
+            limit,
+            total_lines,
+        } => format!(
+            "Invalid line window: offset={offset} limit={limit} but note has \
+             {total_lines} line(s).\n\
+             Hint: re-read with `show_note_lines` and use valid bounds."
+        ),
+        NbError::EmptySubstringPattern => {
+            "Substring edit rejected: the pattern must be non-empty.\n\
+             Hint: provide a non-empty pattern."
+                .to_string()
+        }
+        NbError::FragmentedBody {
+            fragment_count,
+            guidance,
+        } => format!(
+            "Body operation rejected: the note has {fragment_count} body \
+             fragment(s), so line/substring/body-replace operations are not \
+             available. {guidance}\n\
+             Hint: metadata operations (`retitle_note`, `edit_note_tags`) still \
+             apply."
+        ),
+        NbError::DirtyBaseline { guidance } => format!(
+            "Mutation rejected because the notebook worktree/index is dirty.\n\
+             Hint: commit or clean the notebook worktree/index before retrying. \
+             ({guidance})"
+        ),
+        NbError::IndeterminateCommit {
+            pre_revision,
+            post_revision_observed,
+            guidance,
+        } => format!(
+            "Commit completion is unknown (pre={pre_revision}, \
+             post={post_revision_observed:?}).\n\
+             Hint: do not auto-retry the same plan blindly; inspect HEAD and \
+             notebook status first. ({guidance})"
+        ),
+        NbError::RecoveryRequired {
+            pre_revision,
+            post_revision_observed,
+            status_observed,
+            preserved_paths,
+            guidance,
+        } => format!(
+            "Recovery required after a failed commit (pre={pre_revision}, \
+             post={post_revision_observed:?}, preserved={preserved_paths:?}).\n\
+             Hint: inspect HEAD and status before any retry. \
+             status={status_observed:?} ({guidance})"
+        ),
+        NbError::GateTimeout { gate, timeout_ms } => format!(
+            "The notebook `{gate}` is busy; the operation timed out after \
+             {timeout_ms}ms.\n\
+             Hint: retry later; concurrent notebook operations are serialized."
+        ),
+        NbError::PathCollision { path, plan_index } => format!(
+            "Path collision at `{path}` (plan op {plan_index:?}).\n\
+             Hint: choose a different path or resolve the existing item first."
+        ),
+        NbError::PathIgnored {
+            path,
+            guidance,
+            plan_index,
+        } => format!(
+            "Path `{path}` is Git-ignored (plan op {plan_index:?}); the \
+             transaction cannot represent it.\n\
+             Hint: {guidance}"
+        ),
+        NbError::PlanValidation {
+            kind,
+            message,
+            plan_index,
+        } => format!("Plan validation ({kind}) failed at op {plan_index:?}: {message}"),
+        NbError::UnsupportedStructure { reason } => {
+            format!("Unsupported notebook structure: {reason}")
+        }
+        NbError::InvalidFingerprint { reason } => format!(
+            "Invalid fingerprint: {reason}.\n\
+             Hint: a fingerprint is `b3:` followed by 64 lowercase hex digits, \
+             obtained from `show`."
         ),
         other => other.to_string(),
     }
@@ -1081,15 +1553,16 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 "Compatibility aliases: note commands selector->id, nb.todo content->description, nb.folders folder->parent, nb.mkdir folder->path.",
                 "nb.tasks is recursive by default; pass recursive:false to limit to the selected folder.",
                 "In nb.list output, todo state comes from [ ] / [x] in titles; leading glyphs like ✔️ are item-type markers from nb.",
+                "The legacy nb.edit command is removed in the nb-api 0.3 cutover. Use the direct body-aware tools replace_note_body, edit_note_substring, edit_note_lines, retitle_note, or edit_note_tags.",
+                "Body-aware tools (replace_note_body, edit_note_substring, edit_note_lines, retitle_note, edit_note_tags) and line tools (show_note_lines, search_note_lines) are direct-only: they have no multiplexed aliases.",
                 "Call help with query 'nb.<command>' for exact command schemas.",
-                "First-class tools: add, show, edit, delete, move, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, import, status, notebooks. These expose typed schemas directly and bypass the multiplexed command dispatch. Some clients may display these with server-prefixed names (e.g., nb_add)."
+                "First-class tools: add, show, delete, move, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, import, status, notebooks, replace_note_body, edit_note_substring, edit_note_lines, retitle_note, edit_note_tags, show_note_lines, search_note_lines. These expose typed schemas directly and bypass the multiplexed command dispatch. Some clients may display these with server-prefixed names (e.g., nb_add)."
             ],
             "commands": [
                 {"command": "nb.status", "description": "Show current notebook and stats"},
                 {"command": "nb.notebooks", "description": "List available notebooks (list-only; no add/delete in MCP)"},
                 {"command": "nb.add", "description": "Create a new note (folder required by default)"},
-                {"command": "nb.show", "description": "Read a note's content"},
-                {"command": "nb.edit", "description": "Update a note's content (mode required: overwrite, append, or prepend)"},
+                {"command": "nb.show", "description": "Read a note's content (structured envelope)"},
                 {"command": "nb.delete", "description": "Delete a note"},
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
@@ -1107,8 +1580,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"tool": "status", "description": "Show current notebook and stats"},
                 {"tool": "notebooks", "description": "List available notebooks"},
                 {"tool": "add", "description": "Create a new note (folder required by default)"},
-                {"tool": "show", "description": "Read a note's content"},
-                {"tool": "edit", "description": "Update a note's content (mode required: overwrite, append, or prepend)"},
+                {"tool": "show", "description": "Read a note's content (structured envelope)"},
                 {"tool": "delete", "description": "Delete a note"},
                 {"tool": "move", "description": "Move or rename a note"},
                 {"tool": "list", "description": "List notes with optional filtering"},
@@ -1121,6 +1593,13 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"tool": "folders", "description": "List folders in notebook"},
                 {"tool": "mkdir", "description": "Create a folder"},
                 {"tool": "import", "description": "Import a file or URL into notebook (folder required by default)"},
+                {"tool": "replace_note_body", "description": "Replace the entire note body (fingerprint required)"},
+                {"tool": "edit_note_substring", "description": "Replace occurrences of a byte pattern in the body"},
+                {"tool": "edit_note_lines", "description": "Apply a batch of disjoint anchored line edits"},
+                {"tool": "retitle_note", "description": "Change a note's title without changing its path"},
+                {"tool": "edit_note_tags", "description": "Add and/or remove tags atomically"},
+                {"tool": "show_note_lines", "description": "List body lines with anchors and window metadata"},
+                {"tool": "search_note_lines", "description": "Search body line texts and return anchored matches"},
             ],
             "invoke": {
                 "tool": "nb",
@@ -1139,13 +1618,8 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.show" => command_help(
             "nb.show",
-            "Read a note's content",
+            "Read a note's content as a structured envelope (base64 source/body authority, lossy text, non_utf8 marker)",
             json_schema_for::<ShowArgs>(),
-        ),
-        "nb.edit" => command_help(
-            "nb.edit",
-            "Update a note's content (mode required: overwrite, append, or prepend).",
-            json_schema_for::<EditArgs>(),
         ),
         "nb.delete" => command_help(
             "nb.delete",
@@ -1230,13 +1704,8 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "show" => first_class_help(
             "show",
-            "Read a note's content.",
+            "Read a note's content as a structured envelope (base64 source/body authority, lossy text, non_utf8 marker).",
             json_schema_for::<ShowArgs>(),
-        ),
-        "edit" => first_class_help(
-            "edit",
-            "Update a note's content (mode required: overwrite, append, or prepend).",
-            json_schema_for::<EditArgs>(),
         ),
         "delete" => first_class_help("delete", "Delete a note.", json_schema_for::<DeleteArgs>()),
         "move" => first_class_help(
@@ -1289,6 +1758,41 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "import",
             "Import a file or URL into notebook. The folder field is required by default.",
             json_schema_for::<ImportArgs>(),
+        ),
+        "replace_note_body" => first_class_help(
+            "replace_note_body",
+            "Replace the entire body of a note. Requires the body fingerprint from a preceding `show`.",
+            json_schema_for::<ReplaceNoteBodyArgs>(),
+        ),
+        "edit_note_substring" => first_class_help(
+            "edit_note_substring",
+            "Replace one or more occurrences of a byte pattern in a note body.",
+            json_schema_for::<EditNoteSubstringArgs>(),
+        ),
+        "edit_note_lines" => first_class_help(
+            "edit_note_lines",
+            "Apply a batch of disjoint anchored line edits to a note body.",
+            json_schema_for::<EditNoteLinesArgs>(),
+        ),
+        "retitle_note" => first_class_help(
+            "retitle_note",
+            "Change a note's title without changing its path.",
+            json_schema_for::<RetitleNoteArgs>(),
+        ),
+        "edit_note_tags" => first_class_help(
+            "edit_note_tags",
+            "Add and/or remove tags on a note atomically.",
+            json_schema_for::<EditNoteTagsArgs>(),
+        ),
+        "show_note_lines" => first_class_help(
+            "show_note_lines",
+            "List body lines with anchors and window metadata.",
+            json_schema_for::<ShowNoteLinesArgs>(),
+        ),
+        "search_note_lines" => first_class_help(
+            "search_note_lines",
+            "Search body line texts and return anchored matches.",
+            json_schema_for::<SearchNoteLinesArgs>(),
         ),
         _ => {
             return Err(McpError::invalid_params(

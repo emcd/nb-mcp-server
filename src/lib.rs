@@ -47,6 +47,7 @@ impl Config {
             create_notebook: self.create_notebook,
             allow_top_level_notes: self.allow_top_level_notes,
             disable_git_signing: self.commit_signing_disabled,
+            ..Default::default()
         }
     }
 }
