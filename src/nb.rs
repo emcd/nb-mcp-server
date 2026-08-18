@@ -7,6 +7,6 @@
 
 pub use nb_api::{
     BodyFragment, BoundaryAt, ByteString, CommitOutcome, DocumentKind, Fingerprint, LineAnchor,
-    LineEdit, LinePosition, LineRef, NbClient, NbError, NoteTarget, Occurrence, SearchMode,
-    SearchNoteLines, ShowNote, ShowNoteLines, TaskStatus, TodoState,
+    LineEdit, LinePosition, LineRef, LineTerminator, NbClient, NbError, NoteTarget, Occurrence,
+    SearchMode, SearchNoteLines, ShowNote, ShowNoteLines, TaskStatus, TodoState,
 };

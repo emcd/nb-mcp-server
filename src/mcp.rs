@@ -13,8 +13,9 @@ use tracing::{info, warn};
 use crate::Config;
 use crate::git_signing;
 use crate::nb::{
-    BodyFragment, ByteString, CommitOutcome, DocumentKind, Fingerprint, LineEdit, NbClient,
-    NbError, NoteTarget, Occurrence, SearchMode, ShowNote, TaskStatus, TodoState,
+    ByteString, CommitOutcome, DocumentKind, Fingerprint, LineAnchor, LineEdit, LinePosition,
+    LineRef, LineTerminator, NbClient, NbError, NoteTarget, Occurrence, SearchMode,
+    SearchNoteLines, ShowNote, ShowNoteLines, TaskStatus, TodoState,
 };
 
 #[derive(Clone)]
@@ -311,10 +312,11 @@ struct ImportArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ReplaceNoteBodyArgs {
-    /// Address an existing note by selector or notebook-relative path.
-    target: NoteTarget,
-    /// New body content as base64 bytes. Replaces the entire note body.
-    new_body: ByteString,
+    /// Notebook selector, note ID, filename, or title; not a filesystem path. Alias `selector`.
+    #[serde(alias = "selector")]
+    id: String,
+    /// New body content as plain UTF-8 text. Replaces the entire note body. No base64 opt-in.
+    new_body: String,
     /// Body fingerprint from a preceding `show` (`b3:` + 64 lowercase hex). Required to prevent stale overwrites.
     fingerprint: String,
     /// Bare notebook name containing the note (uses default if not specified).
@@ -326,12 +328,13 @@ struct ReplaceNoteBodyArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct EditNoteSubstringArgs {
-    /// Address an existing note by selector or notebook-relative path.
-    target: NoteTarget,
-    /// Byte pattern to find, as base64 bytes.
-    pattern: ByteString,
-    /// Replacement bytes, as base64.
-    replacement: ByteString,
+    /// Notebook selector, note ID, filename, or title; not a filesystem path. Alias `selector`.
+    #[serde(alias = "selector")]
+    id: String,
+    /// Byte pattern to find, as plain UTF-8 text.
+    pattern: String,
+    /// Replacement bytes, as plain UTF-8 text.
+    replacement: String,
     /// Occurrence selector: `first`, `all`, or `nth` (with `n`).
     occurrence: Occurrence,
     /// Expected number of matches; mismatch rejects the edit.
@@ -346,13 +349,33 @@ struct EditNoteSubstringArgs {
     notebook: Option<String>,
 }
 
+/// MCP-facing line edit with plain UTF-8 content (no base64).
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum McpLineEdit {
+    Insert {
+        at: LinePosition,
+        content: String,
+    },
+    Delete {
+        start: LineRef,
+        end: LineRef,
+    },
+    Replace {
+        start: LineRef,
+        end: LineRef,
+        content: String,
+    },
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct EditNoteLinesArgs {
-    /// Address an existing note by selector or notebook-relative path.
-    target: NoteTarget,
-    /// Batch of disjoint line edits (insert/delete/replace) against anchors from one original snapshot.
-    edits: Vec<LineEdit>,
+    /// Notebook selector, note ID, filename, or title; not a filesystem path. Alias `selector`.
+    #[serde(alias = "selector")]
+    id: String,
+    /// Batch of disjoint line edits (insert/delete/replace) against anchors from one original snapshot. Content is plain UTF-8 text.
+    edits: Vec<McpLineEdit>,
     /// Bare notebook name containing the note (uses default if not specified).
     #[serde(default)]
     #[schemars(with = "String")]
@@ -362,10 +385,11 @@ struct EditNoteLinesArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct RetitleNoteArgs {
-    /// Address an existing note by selector or notebook-relative path.
-    target: NoteTarget,
-    /// New title bytes as base64. Does not change the note path.
-    title: ByteString,
+    /// Notebook selector, note ID, filename, or title; not a filesystem path. Alias `selector`.
+    #[serde(alias = "selector")]
+    id: String,
+    /// New title as plain UTF-8 text. Does not change the note path.
+    title: String,
     /// Bare notebook name containing the note (uses default if not specified).
     #[serde(default)]
     #[schemars(with = "String")]
@@ -375,8 +399,9 @@ struct RetitleNoteArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct EditNoteTagsArgs {
-    /// Address an existing note by selector or notebook-relative path.
-    target: NoteTarget,
+    /// Notebook selector, note ID, filename, or title; not a filesystem path. Alias `selector`.
+    #[serde(alias = "selector")]
+    id: String,
     /// Tags to add (with or without # prefix).
     #[serde(default)]
     add: Vec<String>,
@@ -392,8 +417,9 @@ struct EditNoteTagsArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ShowNoteLinesArgs {
-    /// Address an existing note by selector or notebook-relative path.
-    target: NoteTarget,
+    /// Notebook selector, note ID, filename, or title; not a filesystem path. Alias `selector`.
+    #[serde(alias = "selector")]
+    id: String,
     /// 1-based starting line; defaults to 1.
     #[serde(default)]
     #[schemars(with = "u32")]
@@ -411,59 +437,271 @@ struct ShowNoteLinesArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct SearchNoteLinesArgs {
-    /// Address an existing note by selector or notebook-relative path.
-    target: NoteTarget,
-    /// Byte pattern to search for within body lines, as base64 bytes.
-    pattern: ByteString,
+    /// Notebook selector, note ID, filename, or title; not a filesystem path. Alias `selector`.
+    #[serde(alias = "selector")]
+    id: String,
+    /// Byte pattern to search for within body lines, as plain UTF-8 text.
+    pattern: String,
     /// Bare notebook name containing the note (uses default if not specified).
     #[serde(default)]
     #[schemars(with = "String")]
     notebook: Option<String>,
 }
 
-/// Structured `show` envelope: base64 authority plus optional lossy text.
+/// Text-first slim `show` envelope (no base64, Option<String> title, String body).
 #[derive(Debug, Serialize)]
 struct ShowEnvelope {
     selector: String,
     path: String,
     kind: DocumentKind,
     todo_state: Option<TodoState>,
-    title: Option<ByteString>,
-    title_text: Option<String>,
+    title: Option<String>,
     tags: Vec<String>,
-    body_fragments: Vec<BodyFragment>,
+    body: String,
     body_contiguous: bool,
-    body: ByteString,
     fingerprint: Fingerprint,
-    source: ByteString,
-    /// Lossy UTF-8 text of `source`; present only when source is valid UTF-8.
-    text: Option<String>,
-    /// True when `source` is not valid UTF-8; `text` is then absent.
-    non_utf8: bool,
 }
 
 impl ShowEnvelope {
     fn from_show(shown: ShowNote) -> Result<Self, NbError> {
+        // Strict UTF-8 validation: non-UTF-8 source yields a typed recovery error.
         let source_bytes = shown.source.as_bytes()?;
-        let (text, non_utf8) = match std::str::from_utf8(&source_bytes) {
-            Ok(s) => (Some(s.to_string()), false),
-            Err(_) => (None, true),
+        if std::str::from_utf8(&source_bytes).is_err() {
+            let mime_hint = mime_hint_for_bytes(&source_bytes);
+            return Err(NbError::ValidationError {
+                reason: format!(
+                    "Note `{}` source is not valid UTF-8 (detected {mime_hint}); no base64 on this change's textual read/edit MCP tool surface. \
+                     Hint: retrieve raw bytes outside MCP with `nb show <selector> --print --no-color` or `nb show <selector> --print --raw` and handle locally.",
+                    shown.selector
+                ),
+                location: None,
+            });
+        }
+        let body_bytes = shown.body.as_bytes()?;
+        let body = String::from_utf8(body_bytes).map_err(|_| NbError::ValidationError {
+            reason: format!(
+                "Note `{}` body is not valid UTF-8; no base64 on this change's textual read/edit MCP tool surface. \
+                 Hint: retrieve raw bytes outside MCP with `nb show <selector>` and handle locally.",
+                shown.selector
+            ),
+            location: None,
+        })?;
+        let title = match shown.title {
+            Some(bytes) => {
+                let raw = bytes.as_bytes()?;
+                let s = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
+                    reason: format!(
+                        "Note `{}` title is not valid UTF-8; no base64 on this change's textual read/edit MCP tool surface.",
+                        shown.selector
+                    ),
+                    location: None,
+                })?;
+                // Mirror nb-api's title_text trimming: strip leading '#', surrounding
+                // whitespace, and trailing newline so the MCP surface exposes plain text.
+                let trimmed = s
+                    .trim_end_matches('\n')
+                    .trim_end_matches('\r')
+                    .trim_start_matches('#')
+                    .trim()
+                    .to_string();
+                Some(trimmed)
+            }
+            None => None,
         };
         Ok(Self {
             selector: shown.selector,
             path: shown.path,
             kind: shown.kind,
             todo_state: shown.todo_state,
-            title: shown.title,
-            title_text: shown.title_text,
+            title,
             tags: shown.tags,
-            body_fragments: shown.body_fragments,
+            body,
             body_contiguous: shown.body_contiguous,
-            body: shown.body,
             fingerprint: shown.fingerprint,
-            source: shown.source,
-            text,
-            non_utf8,
+        })
+    }
+}
+
+fn mime_hint_for_bytes(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "image/jpeg"
+    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        "image/png"
+    } else if bytes.starts_with(&[0x25, b'P', b'D', b'F']) {
+        "application/pdf"
+    } else if bytes.starts_with(&[0x1F, 0x8B]) {
+        "application/gzip"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+/// Text-first line envelope.
+#[derive(Debug, Serialize)]
+struct ShowNoteLinesEnvelope {
+    selector: String,
+    path: String,
+    kind: DocumentKind,
+    total_lines: u32,
+    offset: u32,
+    limit: u32,
+    next_offset: Option<u32>,
+    lines: Vec<NoteLineEnvelope>,
+    title: Option<String>,
+    body_fingerprint: Fingerprint,
+}
+
+#[derive(Debug, Serialize)]
+struct NoteLineEnvelope {
+    number: u32,
+    anchor: LineAnchor,
+    text: String,
+    terminator: LineTerminator,
+}
+
+#[derive(Debug, Serialize)]
+struct SearchNoteLinesEnvelope {
+    selector: String,
+    path: String,
+    kind: DocumentKind,
+    hits: Vec<HitEnvelope>,
+    body_fingerprint: Fingerprint,
+}
+
+#[derive(Debug, Serialize)]
+struct HitEnvelope {
+    number: u32,
+    anchor: LineAnchor,
+    start_byte: u32,
+    end_byte: u32,
+    text: Option<String>,
+}
+
+fn convert_mcp_line_edits(edits: Vec<McpLineEdit>) -> Result<Vec<LineEdit>, NbError> {
+    edits
+        .into_iter()
+        .map(|e| match e {
+            McpLineEdit::Insert { at, content } => Ok(LineEdit::Insert {
+                at,
+                content: ByteString::from_bytes(content.into_bytes()),
+            }),
+            McpLineEdit::Delete { start, end } => Ok(LineEdit::Delete { start, end }),
+            McpLineEdit::Replace {
+                start,
+                end,
+                content,
+            } => Ok(LineEdit::Replace {
+                start,
+                end,
+                content: ByteString::from_bytes(content.into_bytes()),
+            }),
+        })
+        .collect()
+}
+
+fn show_note_lines_result(result: Result<ShowNoteLines, NbError>) -> CallToolResult {
+    match result {
+        Ok(shown) => match ShowNoteLinesEnvelope::from_wire(shown) {
+            Ok(envelope) => json_success(&envelope),
+            Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        },
+        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+    }
+}
+
+fn search_note_lines_result(result: Result<SearchNoteLines, NbError>) -> CallToolResult {
+    match result {
+        Ok(shown) => match SearchNoteLinesEnvelope::from_wire(shown) {
+            Ok(envelope) => json_success(&envelope),
+            Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        },
+        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+    }
+}
+
+impl ShowNoteLinesEnvelope {
+    fn from_wire(shown: ShowNoteLines) -> Result<Self, NbError> {
+        let title = match shown.title {
+            Some(bytes) => {
+                let raw = bytes.as_bytes()?;
+                let s = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
+                    reason: "show_note_lines title is not valid UTF-8".to_string(),
+                    location: None,
+                })?;
+                let trimmed = s
+                    .trim_end_matches('\n')
+                    .trim_end_matches('\r')
+                    .trim_start_matches('#')
+                    .trim()
+                    .to_string();
+                Some(trimmed)
+            }
+            None => None,
+        };
+        let lines = shown
+            .lines
+            .into_iter()
+            .map(|l| {
+                let raw = l.text.as_bytes()?;
+                let text = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
+                    reason: format!("line {} text is not valid UTF-8", l.number),
+                    location: None,
+                })?;
+                Ok(NoteLineEnvelope {
+                    number: l.number,
+                    anchor: l.anchor,
+                    text,
+                    terminator: l.terminator,
+                })
+            })
+            .collect::<Result<Vec<_>, NbError>>()?;
+        Ok(Self {
+            selector: shown.selector,
+            path: shown.path,
+            kind: shown.kind,
+            total_lines: shown.total_lines,
+            offset: shown.offset,
+            limit: shown.limit,
+            next_offset: shown.next_offset,
+            lines,
+            title,
+            body_fingerprint: shown.body_fingerprint,
+        })
+    }
+}
+
+impl SearchNoteLinesEnvelope {
+    fn from_wire(shown: SearchNoteLines) -> Result<Self, NbError> {
+        let hits = shown
+            .hits
+            .into_iter()
+            .map(|h| {
+                let text = match h.text {
+                    Some(bytes) => {
+                        let raw = bytes.as_bytes()?;
+                        let s = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
+                            reason: format!("hit line {} text is not valid UTF-8", h.number),
+                            location: None,
+                        })?;
+                        Some(s)
+                    }
+                    None => None,
+                };
+                Ok(HitEnvelope {
+                    number: h.number,
+                    anchor: h.anchor,
+                    start_byte: h.start_byte,
+                    end_byte: h.end_byte,
+                    text,
+                })
+            })
+            .collect::<Result<Vec<_>, NbError>>()?;
+        Ok(Self {
+            selector: shown.selector,
+            path: shown.path,
+            kind: shown.kind,
+            hits,
+            body_fingerprint: shown.body_fingerprint,
         })
     }
 }
@@ -559,7 +797,7 @@ impl McpServer {
 
     #[tool(
         name = "show",
-        description = "Read a note's content as a structured envelope: base64 source/body are byte-exact; text is lossy UTF-8 (absent with non_utf8=true when not valid UTF-8). Use id (alias: selector) to identify the note."
+        description = "Read a note's content as a text-first structured envelope (selector, path, kind, todo_state, title, tags, body, body_contiguous, fingerprint). Non-UTF-8 or non-textual targets return a typed error with recovery guidance; use id (alias: selector) to identify the note."
     )]
     async fn nb_show(
         &self,
@@ -1088,13 +1326,11 @@ impl McpServer {
             Ok(fp) => fp,
             Err(err) => return Ok(nb_error_result(err)),
         };
-        let new_body = match args.new_body.as_bytes() {
-            Ok(bytes) => bytes,
-            Err(err) => return Ok(nb_error_result(err)),
-        };
+        let target = NoteTarget::selector(args.id);
+        let new_body = args.new_body.into_bytes();
         let result = self
             .nb
-            .replace_note_body(args.target, new_body, fingerprint, args.notebook.as_deref())
+            .replace_note_body(target, new_body, fingerprint, args.notebook.as_deref())
             .await;
         Ok(outcome_result(result))
     }
@@ -1110,18 +1346,13 @@ impl McpServer {
             },
             None => None,
         };
-        let pattern = match args.pattern.as_bytes() {
-            Ok(bytes) => bytes,
-            Err(err) => return Ok(nb_error_result(err)),
-        };
-        let replacement = match args.replacement.as_bytes() {
-            Ok(bytes) => bytes,
-            Err(err) => return Ok(nb_error_result(err)),
-        };
+        let target = NoteTarget::selector(args.id);
+        let pattern = args.pattern.into_bytes();
+        let replacement = args.replacement.into_bytes();
         let result = self
             .nb
             .edit_note_substring(
-                args.target,
+                target,
                 pattern,
                 replacement,
                 args.occurrence,
@@ -1137,9 +1368,14 @@ impl McpServer {
         &self,
         args: EditNoteLinesArgs,
     ) -> Result<CallToolResult, McpError> {
+        let target = NoteTarget::selector(args.id);
+        let edits = match convert_mcp_line_edits(args.edits) {
+            Ok(edits) => edits,
+            Err(err) => return Ok(nb_error_result(err)),
+        };
         let result = self
             .nb
-            .edit_note_lines(args.target, args.edits, args.notebook.as_deref())
+            .edit_note_lines(target, edits, args.notebook.as_deref())
             .await;
         Ok(outcome_result(result))
     }
@@ -1148,13 +1384,11 @@ impl McpServer {
         &self,
         args: RetitleNoteArgs,
     ) -> Result<CallToolResult, McpError> {
-        let title = match args.title.as_bytes() {
-            Ok(bytes) => bytes,
-            Err(err) => return Ok(nb_error_result(err)),
-        };
+        let target = NoteTarget::selector(args.id);
+        let title = args.title.into_bytes();
         let result = self
             .nb
-            .retitle_note(args.target, title, args.notebook.as_deref())
+            .retitle_note(target, title, args.notebook.as_deref())
             .await;
         Ok(outcome_result(result))
     }
@@ -1163,14 +1397,10 @@ impl McpServer {
         &self,
         args: EditNoteTagsArgs,
     ) -> Result<CallToolResult, McpError> {
+        let target = NoteTarget::selector(args.id);
         let result = self
             .nb
-            .edit_note_tags(
-                args.target,
-                &args.add,
-                &args.remove,
-                args.notebook.as_deref(),
-            )
+            .edit_note_tags(target, &args.add, &args.remove, args.notebook.as_deref())
             .await;
         Ok(outcome_result(result))
     }
@@ -1179,31 +1409,25 @@ impl McpServer {
         &self,
         args: ShowNoteLinesArgs,
     ) -> Result<CallToolResult, McpError> {
+        let target = NoteTarget::selector(args.id);
         let result = self
             .nb
-            .show_note_lines(
-                args.target,
-                args.offset,
-                args.limit,
-                args.notebook.as_deref(),
-            )
+            .show_note_lines(target, args.offset, args.limit, args.notebook.as_deref())
             .await;
-        Ok(typed_result(result))
+        Ok(show_note_lines_result(result))
     }
 
     async fn dispatch_search_note_lines(
         &self,
         args: SearchNoteLinesArgs,
     ) -> Result<CallToolResult, McpError> {
-        let pattern = match args.pattern.as_bytes() {
-            Ok(bytes) => bytes,
-            Err(err) => return Ok(nb_error_result(err)),
-        };
+        let target = NoteTarget::selector(args.id);
+        let pattern = args.pattern.into_bytes();
         let result = self
             .nb
-            .search_note_lines(args.target, &pattern, args.notebook.as_deref())
+            .search_note_lines(target, &pattern, args.notebook.as_deref())
             .await;
-        Ok(typed_result(result))
+        Ok(search_note_lines_result(result))
     }
 
     async fn dispatch_delete(&self, args: DeleteArgs) -> Result<CallToolResult, McpError> {
@@ -1366,6 +1590,7 @@ fn show_result(result: Result<ShowNote, NbError>) -> CallToolResult {
 }
 
 /// Present a serializable typed result (lines/search lines) as JSON.
+#[allow(dead_code)]
 fn typed_result<T: Serialize>(result: Result<T, NbError>) -> CallToolResult {
     match result {
         Ok(value) => json_success(&value),
@@ -1593,8 +1818,8 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
                 {"tool": "folders", "description": "List folders in notebook"},
                 {"tool": "mkdir", "description": "Create a folder"},
                 {"tool": "import", "description": "Import a file or URL into notebook (folder required by default)"},
-                {"tool": "replace_note_body", "description": "Replace the entire note body (fingerprint required)"},
-                {"tool": "edit_note_substring", "description": "Replace occurrences of a byte pattern in the body"},
+                {"tool": "replace_note_body", "description": "Replace the entire note body (fingerprint required, plain UTF-8 text)"},
+                {"tool": "edit_note_substring", "description": "Replace occurrences of a text pattern in the body (plain UTF-8)"},
                 {"tool": "edit_note_lines", "description": "Apply a batch of disjoint anchored line edits"},
                 {"tool": "retitle_note", "description": "Change a note's title without changing its path"},
                 {"tool": "edit_note_tags", "description": "Add and/or remove tags atomically"},
@@ -1618,7 +1843,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.show" => command_help(
             "nb.show",
-            "Read a note's content as a structured envelope (base64 source/body authority, lossy text, non_utf8 marker)",
+            "Read a note's content as a text-first structured envelope (selector, path, kind, todo_state, title, tags, body, body_contiguous, fingerprint)",
             json_schema_for::<ShowArgs>(),
         ),
         "nb.delete" => command_help(
@@ -1704,7 +1929,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "show" => first_class_help(
             "show",
-            "Read a note's content as a structured envelope (base64 source/body authority, lossy text, non_utf8 marker).",
+            "Read a note's content as a text-first structured envelope (selector, path, kind, todo_state, title, tags, body, body_contiguous, fingerprint).",
             json_schema_for::<ShowArgs>(),
         ),
         "delete" => first_class_help("delete", "Delete a note.", json_schema_for::<DeleteArgs>()),

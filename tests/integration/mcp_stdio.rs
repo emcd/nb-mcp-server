@@ -648,7 +648,7 @@ fn tools_list_optional_scalars_are_plain_types_not_nullable_unions() {
         "todo.description should not be a nullable union"
     );
 
-    // replace_note_body: fingerprint must be plain string (no nullable union)
+    // replace_note_body: fingerprint and new_body must be plain string (no nullable union), id flat
     let rnb = find_tool("replace_note_body");
     let rnb_schema = &rnb["inputSchema"];
     let fp_prop = &rnb_schema["properties"]["fingerprint"];
@@ -661,18 +661,35 @@ fn tools_list_optional_scalars_are_plain_types_not_nullable_unions() {
         fp_prop.get("anyOf").is_none() && fp_prop.get("oneOf").is_none(),
         "replace_note_body.fingerprint should not be a nullable union"
     );
-    // target must be present (NoteTarget tagged union, not nullable)
+    // id must be plain string (flat id, alias selector)
+    let id_prop = &rnb_schema["properties"]["id"];
+    assert_eq!(
+        id_prop["type"].as_str().unwrap(),
+        "string",
+        "replace_note_body.id should be plain string"
+    );
     assert!(
-        rnb_schema["properties"]["target"].is_object(),
-        "replace_note_body.target should be an object schema"
+        id_prop.get("anyOf").is_none() && id_prop.get("oneOf").is_none(),
+        "replace_note_body.id should not be a nullable union"
+    );
+    let new_body_prop = &rnb_schema["properties"]["new_body"];
+    assert_eq!(
+        new_body_prop["type"].as_str().unwrap(),
+        "string",
+        "replace_note_body.new_body should be plain string"
     );
     let required = rnb_schema["required"].as_array().unwrap();
-    for field in ["target", "new_body", "fingerprint"] {
+    for field in ["id", "new_body", "fingerprint"] {
         assert!(
             required.iter().any(|r| r.as_str() == Some(field)),
             "replace_note_body should require {field}"
         );
     }
+    // ensure no ByteString shape appears
+    assert!(
+        rnb_schema["properties"]["new_body"]["properties"].is_null(),
+        "replace_note_body.new_body should not be a ByteString object"
+    );
 }
 
 // Pure-CLI-read first-class tools.

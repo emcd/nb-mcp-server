@@ -109,29 +109,37 @@ friction without creating new routing ambiguity.
 
 ## Body-Aware Editing
 
-The body-aware tools address notes by `target`, mirroring the `nb-api 0.3`
-`NoteTarget` wire type:
+The body-aware tools address notes by a flat `id` (alias `selector`) string
+exactly like `show`/`delete`/`move`; the `NoteTarget` `path` variant is
+not exposed and qualified selectors round-trip directly as `id`. Content
+fields (`pattern`, `replacement`, `title`, `new_body`, line-edit `content`)
+and line/search `text`/`title` are plain UTF-8 strings; there is no base64
+on this change's textual read/edit MCP tool surface.
 
 - `replace_note_body` requires the body `fingerprint` from a preceding
   `show`; a stale fingerprint is rejected so a caller cannot overwrite a
-  note it has not just read.
-- `edit_note_substring` replaces `pattern` occurrences; `expected_count`
-  must match, and an optional fingerprint guards against stale edits.
+  note it has not just read. `new_body` is plain UTF-8 text.
+- `edit_note_substring` replaces plain-text `pattern` occurrences with
+  `replacement`; `expected_count` must match, and an optional fingerprint
+  guards against stale edits.
 - `edit_note_lines` applies a batch of disjoint `edits` verified against
-  line anchors from one original snapshot.
-- `retitle_note` changes the title without changing the path.
+  line anchors from one original snapshot; `content` is plain UTF-8 text.
+- `retitle_note` changes the `title` (plain UTF-8) without changing the path.
 - `edit_note_tags` adds/removes tags atomically.
 
-Line-level reads (`show_note_lines`, `search_note_lines`) return bounded,
-anchored results for search-to-edit workflows.
+Line-level reads (`show_note_lines`, `search_note_lines`) return
+text-first bounded, anchored results (`text`/`title` as plain strings) for
+search-to-edit workflows.
 
 ## Structured Results
 
-- `show` returns a structured envelope: base64 `source`/`body` are the
-  byte-exact authority (arbitrary bytes allowed); `text` is lossy UTF-8
-  decoding present only when the source is valid UTF-8, else `non_utf8`
-  is `true` and `text` is absent. `fingerprint`, `kind`, `tags`, and
-  body-fragment metadata accompany the content.
+- `show` returns a text-first slim structured envelope: `selector`, `path`,
+  `kind`, `todo_state`, `title` (`Option<String>`), `tags`, `body` (full
+  decoded UTF-8 text), `body_contiguous`, and `fingerprint`. No base64 field
+  is exposed on this change's textual read/edit MCP tool surface. When the
+  source is not valid UTF-8 or the target is non-textual, `show` returns a
+  typed error carrying the detected content type plus guidance to an external
+  raw-retrieval facility outside MCP (the `nb` CLI).
 - Mutating tools return a structured `CommitOutcome` (`commit_created`,
   `revision_id`, `pre_revision`, per-op `path`/`selector`/`noop`/
   `fingerprint`) rather than raw `nb` stdout.

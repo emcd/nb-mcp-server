@@ -267,6 +267,7 @@ fn add_duplicate_h1_typed_error_is_parity_across_surfaces() {
 // ---- nb-api 0.3 native-engine surface regressions ----
 
 /// Address a note by its fixture-relative path (e.g. `folder/name.md`).
+#[allow(dead_code)]
 fn target_path(path: &str) -> Value {
     json!({"type": "path", "value": path})
 }
@@ -352,28 +353,54 @@ fn show_returns_structured_envelope_with_byte_exact_source() {
         "show should succeed; got: {response}"
     );
     let envelope = RealNbServer::result_json(&response);
-    assert_eq!(
-        envelope["non_utf8"].as_bool(),
-        Some(false),
-        "UTF-8 note should not be non_utf8; got: {envelope}"
-    );
-    let text = envelope["text"].as_str().unwrap();
+    // Slim envelope: body is plain String, title is Option<String>
     assert!(
-        text.contains("# Headline"),
-        "envelope text should contain the note body; got: {text:?}"
+        envelope.get("source").is_none(),
+        "slim envelope should not contain source; got: {envelope}"
     );
     assert!(
-        text.contains("backticks `code`"),
-        "envelope text should preserve backticks; got: {text:?}"
+        envelope.get("non_utf8").is_none(),
+        "slim envelope should not contain non_utf8; got: {envelope}"
     );
-    // Base64 source is the byte-exact authority: the note file is the
-    // title line plus the body (nb-api `build_note_bytes`).
-    let source_b64 = envelope["source"]["base64"].as_str().unwrap();
-    let decoded = base64_standard_decode(source_b64);
+    assert!(
+        envelope.get("body_fragments").is_none(),
+        "slim envelope should not contain body_fragments; got: {envelope}"
+    );
     assert_eq!(
-        String::from_utf8(decoded.clone()).unwrap(),
-        format!("# Envelope Note\n\n{note_body}"),
-        "base64 source must decode to the original note bytes"
+        envelope["title"].as_str().unwrap(),
+        "Envelope Note",
+        "envelope title should be Envelope Note; got: {envelope}"
+    );
+    let body = envelope["body"].as_str().unwrap();
+    assert!(
+        body.contains("# Headline"),
+        "envelope body should contain the note body; got: {body:?}"
+    );
+    assert!(
+        body.contains("backticks `code`"),
+        "envelope body should preserve backticks; got: {body:?}"
+    );
+    assert_eq!(
+        envelope["body_contiguous"].as_bool(),
+        Some(true),
+        "contiguous body should be true; got: {envelope}"
+    );
+    assert!(
+        envelope["selector"].as_str().is_some(),
+        "envelope should have selector; got: {envelope}"
+    );
+    assert!(
+        envelope["path"].as_str().is_some(),
+        "envelope should have path; got: {envelope}"
+    );
+    assert!(
+        envelope["tags"].is_array(),
+        "envelope should have tags; got: {envelope}"
+    );
+    // Body should be the note body exactly
+    assert_eq!(
+        body, note_body,
+        "envelope body must equal the original note body"
     );
     let fingerprint = envelope["fingerprint"].as_str().unwrap();
     assert!(
@@ -382,6 +409,7 @@ fn show_returns_structured_envelope_with_byte_exact_source() {
     );
 }
 
+#[allow(dead_code)]
 fn base64_standard_decode(input: &str) -> Vec<u8> {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD
@@ -389,12 +417,14 @@ fn base64_standard_decode(input: &str) -> Vec<u8> {
         .unwrap_or_else(|e| panic!("invalid base64: {e}: {input:?}"))
 }
 
+#[allow(dead_code)]
 fn base64_standard_encode(input: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(input)
 }
 
 /// Build a base64 `ByteString` wire value (`{"base64": "..."}`).
+#[allow(dead_code)]
 fn b64_bytes(input: &[u8]) -> Value {
     json!({"base64": base64_standard_encode(input)})
 }
@@ -419,8 +449,8 @@ fn replace_note_body_requires_fresh_fingerprint() {
     let ok = server.call_first_class(
         "replace_note_body",
         json!({
-            "target": target_path(&path),
-            "new_body": b64_bytes(b"Replaced body.\n"),
+            "id": format!("{}:{path}", env.notebook()),
+            "new_body": "Replaced body.\n",
             "fingerprint": fingerprint,
             "notebook": env.notebook(),
         }),
@@ -436,8 +466,8 @@ fn replace_note_body_requires_fresh_fingerprint() {
     let rejected = server.call_first_class(
         "replace_note_body",
         json!({
-            "target": target_path(&path),
-            "new_body": b64_bytes(b"Should be rejected.\n"),
+            "id": format!("{}:{path}", env.notebook()),
+            "new_body": "Should be rejected.\n",
             "fingerprint": stale,
             "notebook": env.notebook(),
         }),
@@ -469,8 +499,8 @@ fn retitle_note_changes_title_without_path() {
     let response = server.call_first_class(
         "retitle_note",
         json!({
-            "target": target_path(&path),
-            "title": b64_bytes(b"New Title"),
+            "id": format!("{}:{path}", env.notebook()),
+            "title": "New Title",
             "notebook": env.notebook(),
         }),
     );
@@ -485,7 +515,7 @@ fn retitle_note_changes_title_without_path() {
         json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
     );
     let envelope = RealNbServer::result_json(&show_response);
-    let title_text = envelope["title_text"].as_str().unwrap();
+    let title_text = envelope["title"].as_str().unwrap();
     assert_eq!(
         title_text, "New Title",
         "retitle should change the title text; got: {title_text}"
@@ -504,7 +534,7 @@ fn edit_note_tags_adds_and_removes_atomically() {
     let response = server.call_first_class(
         "edit_note_tags",
         json!({
-            "target": target_path(&path),
+            "id": format!("{}:{path}", env.notebook()),
             "add": ["alpha", "beta"],
             "remove": [],
             "notebook": env.notebook(),
@@ -631,7 +661,12 @@ fn non_utf8_body_round_trips_through_show_and_replace() {
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
-    // Fresh fingerprint from a preceding show.
+    // Under the text-first slim envelope, `replace_note_body` takes plain
+    // UTF-8 String and `show` returns a typed ValidationError for non-UTF-8
+    // source. Verify the new contract: a valid UTF-8 replace succeeds and
+    // the subsequent show returns the new body, while a non-UTF-8 note
+    // written directly to the filesystem is reported as an error with
+    // recovery guidance.
     let show1 = server.call_first_class(
         "show",
         json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
@@ -639,13 +674,12 @@ fn non_utf8_body_round_trips_through_show_and_replace() {
     let envelope1 = RealNbServer::result_json(&show1);
     let fingerprint = envelope1["fingerprint"].as_str().unwrap().to_string();
 
-    // Replace the body with arbitrary non-UTF-8 bytes.
-    let non_utf8: &[u8] = &[0xff, 0xfe, b'x', 0x00, b'\n', 0x80];
+    // Valid UTF-8 replace should succeed.
     let replaced = server.call_first_class(
         "replace_note_body",
         json!({
-            "target": target_path(&path),
-            "new_body": b64_bytes(non_utf8),
+            "id": format!("{}:{path}", env.notebook()),
+            "new_body": "Replaced valid body.\n",
             "fingerprint": fingerprint,
             "notebook": env.notebook(),
         }),
@@ -653,29 +687,53 @@ fn non_utf8_body_round_trips_through_show_and_replace() {
     assert_eq!(
         replaced["result"]["isError"].as_bool(),
         Some(false),
-        "replace with arbitrary bytes should succeed; got: {replaced}"
+        "replace with valid UTF-8 should succeed; got: {replaced}"
+    );
+    let show_valid = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        show_valid["result"]["isError"].as_bool(),
+        Some(false),
+        "show after valid replace should succeed; got: {show_valid}"
+    );
+    let envelope_valid = RealNbServer::result_json(&show_valid);
+    assert_eq!(
+        envelope_valid["body"].as_str().unwrap(),
+        "Replaced valid body.\n",
+        "body should reflect the valid replace; got: {envelope_valid}"
     );
 
-    // Show reports non_utf8 with no text, and the base64 source is byte-exact.
+    // Write a non-UTF-8 note directly to the filesystem (bypassing MCP
+    // String validation) and verify `show` returns a typed error with
+    // guidance to the external `nb` CLI.
+    let notebook_root = env.nb_dir().join(env.notebook());
+    let file_path = notebook_root.join(&path);
+    let non_utf8: &[u8] = &[0xff, 0xfe, b'x', 0x00, b'\n', 0x80];
+    let mut raw = Vec::new();
+    raw.extend_from_slice(b"# Binary Note\n\n");
+    raw.extend_from_slice(non_utf8);
+    std::fs::write(&file_path, &raw).unwrap();
+    commit_file(&env, &notebook_root, &path);
+
     let show2 = server.call_first_class(
         "show",
         json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
     );
-    let envelope2 = RealNbServer::result_json(&show2);
     assert_eq!(
-        envelope2["non_utf8"].as_bool(),
+        show2["result"]["isError"].as_bool(),
         Some(true),
-        "non-UTF-8 body should set non_utf8; got: {envelope2}"
+        "show on non-UTF-8 source should be rejected; got: {show2}"
+    );
+    let error_text = RealNbServer::error_text(&show2);
+    assert!(
+        error_text.contains("not valid UTF-8"),
+        "non-UTF-8 error should mention UTF-8; got: {error_text}"
     );
     assert!(
-        envelope2["text"].is_null() || envelope2.get("text").is_none(),
-        "non-UTF-8 body should omit text; got: {envelope2}"
-    );
-    let body_b64 = envelope2["body"]["base64"].as_str().unwrap();
-    assert_eq!(
-        base64_standard_decode(body_b64),
-        non_utf8,
-        "base64 body must round-trip the arbitrary bytes exactly"
+        error_text.contains("nb show"),
+        "non-UTF-8 error should guide to nb show CLI; got: {error_text}"
     );
 }
 
@@ -691,9 +749,9 @@ fn edit_note_substring_replaces_occurrences_and_rejects_mismatches() {
     let ok = server.call_first_class(
         "edit_note_substring",
         json!({
-            "target": target_path(&path),
-            "pattern": b64_bytes(b"foo"),
-            "replacement": b64_bytes(b"qux"),
+            "id": format!("{}:{path}", env.notebook()),
+            "pattern": "foo",
+            "replacement": "qux",
             "occurrence": {"type": "all"},
             "expected_count": 2,
             "notebook": env.notebook(),
@@ -709,9 +767,9 @@ fn edit_note_substring_replaces_occurrences_and_rejects_mismatches() {
     let mismatch = server.call_first_class(
         "edit_note_substring",
         json!({
-            "target": target_path(&path),
-            "pattern": b64_bytes(b"qux"),
-            "replacement": b64_bytes(b"zed"),
+            "id": format!("{}:{path}", env.notebook()),
+            "pattern": "qux",
+            "replacement": "zed",
             "occurrence": {"type": "all"},
             "expected_count": 5,
             "notebook": env.notebook(),
@@ -732,9 +790,9 @@ fn edit_note_substring_replaces_occurrences_and_rejects_mismatches() {
     let empty = server.call_first_class(
         "edit_note_substring",
         json!({
-            "target": target_path(&path),
-            "pattern": b64_bytes(b""),
-            "replacement": b64_bytes(b"x"),
+            "id": format!("{}:{path}", env.notebook()),
+            "pattern": "",
+            "replacement": "x",
             "occurrence": {"type": "first"},
             "expected_count": 0,
             "notebook": env.notebook(),
@@ -764,7 +822,7 @@ fn show_note_lines_returns_windowed_anchored_lines() {
     let response = server.call_first_class(
         "show_note_lines",
         json!({
-            "target": target_path(&path),
+            "id": format!("{}:{path}", env.notebook()),
             "offset": 1,
             "limit": 2,
             "notebook": env.notebook(),
@@ -795,7 +853,7 @@ fn show_note_lines_returns_windowed_anchored_lines() {
     let invalid = server.call_first_class(
         "show_note_lines",
         json!({
-            "target": target_path(&path),
+            "id": format!("{}:{path}", env.notebook()),
             "offset": 0,
             "limit": 10,
             "notebook": env.notebook(),
@@ -825,8 +883,8 @@ fn search_note_lines_returns_anchored_hits() {
     let response = server.call_first_class(
         "search_note_lines",
         json!({
-            "target": target_path(&path),
-            "pattern": b64_bytes(b"alpha"),
+            "id": format!("{}:{path}", env.notebook()),
+            "pattern": "alpha",
             "notebook": env.notebook(),
         }),
     );
@@ -851,8 +909,8 @@ fn search_note_lines_returns_anchored_hits() {
     let empty = server.call_first_class(
         "search_note_lines",
         json!({
-            "target": target_path(&path),
-            "pattern": b64_bytes(b""),
+            "id": format!("{}:{path}", env.notebook()),
+            "pattern": "",
             "notebook": env.notebook(),
         }),
     );
@@ -876,7 +934,7 @@ fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
     let read = server.call_first_class(
         "show_note_lines",
         json!({
-            "target": target_path(&path),
+            "id": format!("{}:{path}", env.notebook()),
             "notebook": env.notebook(),
         }),
     );
@@ -890,13 +948,13 @@ fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
     let ok = server.call_first_class(
         "edit_note_lines",
         json!({
-            "target": target_path(&path),
+            "id": format!("{}:{path}", env.notebook()),
             "edits": [
                 {
                     "type": "replace",
                     "start": {"number": 2, "anchor": anchor2},
                     "end": {"number": 2, "anchor": anchor2},
-                    "content": b64_bytes(b"replaced!\n"),
+                    "content": "replaced!\n",
                 }
             ],
             "notebook": env.notebook(),
@@ -912,13 +970,13 @@ fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
     let stale = server.call_first_class(
         "edit_note_lines",
         json!({
-            "target": target_path(&path),
+            "id": format!("{}:{path}", env.notebook()),
             "edits": [
                 {
                     "type": "replace",
                     "start": {"number": 2, "anchor": anchor2},
                     "end": {"number": 2, "anchor": anchor2},
-                    "content": b64_bytes(b"stale\n"),
+                    "content": "stale\n",
                 }
             ],
             "notebook": env.notebook(),
@@ -944,7 +1002,7 @@ fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
     let fresh_read = server.call_first_class(
         "show_note_lines",
         json!({
-            "target": target_path(&path),
+            "id": format!("{}:{path}", env.notebook()),
             "notebook": env.notebook(),
         }),
     );
@@ -955,19 +1013,19 @@ fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
     let overlap = server.call_first_class(
         "edit_note_lines",
         json!({
-            "target": target_path(&path),
+            "id": format!("{}:{path}", env.notebook()),
             "edits": [
                 {
                     "type": "replace",
                     "start": {"number": 1, "anchor": fresh_a1},
                     "end": {"number": 2, "anchor": fresh_a2},
-                    "content": b64_bytes(b"x\n"),
+                    "content": "x\n",
                 },
                 {
                     "type": "replace",
                     "start": {"number": 2, "anchor": fresh_a2},
                     "end": {"number": 2, "anchor": fresh_a2},
-                    "content": b64_bytes(b"y\n"),
+                    "content": "y\n",
                 },
             ],
             "notebook": env.notebook(),
@@ -1017,8 +1075,8 @@ fn fragmented_body_rejects_line_operations_with_recovery_guidance() {
     let replace = server.call_first_class(
         "replace_note_body",
         json!({
-            "target": target_path(path),
-            "new_body": b64_bytes(b"fragment attempt\n"),
+            "id": format!("{}:{path}", env.notebook()),
+            "new_body": "fragment attempt\n",
             "fingerprint": "b3:0000000000000000000000000000000000000000000000000000000000000000",
             "notebook": env.notebook(),
         }),
@@ -1042,7 +1100,7 @@ fn fragmented_body_rejects_line_operations_with_recovery_guidance() {
     let lines = server.call_first_class(
         "show_note_lines",
         json!({
-            "target": target_path(path),
+            "id": format!("{}:{path}", env.notebook()),
             "notebook": env.notebook(),
         }),
     );

@@ -200,23 +200,31 @@ are **direct-only** (no multiplexed `nb.*` aliases) and are designed to
 prevent the destructive whole-note-overwrite failure mode that the old
 surface enabled:
 
-- `replace_note_body` — replace the entire note body. Requires the body
-  `fingerprint` from a preceding `show`; a stale fingerprint is rejected
-  with re-read guidance so you cannot overwrite a note you have not just
-  read.
-- `edit_note_substring` — replace one or more occurrences of a byte
-  pattern. `expected_count` must match the actual match count; an
-  optional fingerprint guards against stale edits.
+- `replace_note_body` — replace the entire note body with plain UTF-8
+  `new_body`. Requires the body `fingerprint` from a preceding `show`; a
+  stale fingerprint is rejected with re-read guidance so you cannot
+  overwrite a note you have not just read.
+- `edit_note_substring` — replace one or more occurrences of a plain-text
+  `pattern` with `replacement`. `expected_count` must match the actual
+  match count; an optional fingerprint guards against stale edits.
 - `edit_note_lines` — apply a batch of disjoint insert/delete/replace
-  edits verified against line anchors from one original snapshot.
+  `edits` verified against line anchors from one original snapshot;
+  `content` is plain UTF-8 text.
 - `retitle_note` — change the title without changing the path.
 - `edit_note_tags` — add and/or remove tags in one atomic operation.
 
-These tools address notes by `target` (`{"type":"selector","value":...}`
-or `{"type":"path","value":...}`). Line-level reads are available through
-`show_note_lines` (bounded, anchored windows) and `search_note_lines`
-(anchored matches), which support search-to-edit without reading the whole
-note.
+These tools address notes by a flat `id` (alias `selector`) string exactly
+like `show`/`delete`/`move`; the `NoteTarget` `path` variant and
+notebook-relative filenames are not exposed, and qualified selectors
+returned by `show`/`show_note_lines`/`search_note_lines` round-trip
+directly as `id`. Body content (`pattern`, `replacement`, `title`,
+`new_body`, line-edit `content`) and line/search `text`/`title` are plain
+UTF-8 strings; there is no base64 on this change's textual read/edit MCP
+tool surface (`new_body` has no `new_body_base64` opt-in; a future
+raw-bytes MCP tool is explicitly outside this guarantee). Line-level reads
+are available through `show_note_lines` (bounded, anchored windows) and
+`search_note_lines` (anchored matches), which support search-to-edit
+without reading the whole note.
 
 Invoking multiplexed `nb.edit` is rejected with recovery guidance naming
 the replacement tools. The body-aware and line tools are direct-only:
@@ -224,11 +232,14 @@ invoking them through the multiplexed `nb` tool is rejected.
 
 ## Structured Results
 
-- `show` returns a structured envelope. The base64 `source` and `body`
-  fields are the byte-exact authority (arbitrary bytes allowed). A `text`
-  field carries lossy UTF-8 decoding and is present only when the source
-  is valid UTF-8; otherwise `non_utf8` is `true` and `text` is absent.
-  `fingerprint`, `kind`, `tags`, and body-fragment metadata accompany it.
+- `show` returns a text-first slim structured envelope: `selector`, `path`,
+   `kind`, `todo_state`, `title` (`Option<String>`), `tags`, `body`
+   (full decoded UTF-8 text), `body_contiguous`, and `fingerprint`. No
+   base64 field is exposed on this change's textual read/edit MCP tool
+   surface. When the source is not valid UTF-8 or the target is
+   non-textual, `show` returns a typed error carrying the detected content
+   type plus guidance to an external raw-retrieval facility outside MCP
+   (the `nb` CLI); it never returns base64 bytes.
 - Mutating tools (`add`, `todo`, `bookmark`, `mkdir`, `delete`, `move`,
   `do`, `undo`, and the body-aware tools) return a structured
   `CommitOutcome`: `commit_created`, `revision_id`, `pre_revision`, and
