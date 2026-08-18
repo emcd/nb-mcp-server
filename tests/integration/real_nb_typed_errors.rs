@@ -904,6 +904,21 @@ fn search_note_lines_returns_anchored_hits() {
         hits[0]["anchor"].as_str().unwrap().starts_with("b3l1:"),
         "hit should carry an anchor; got: {result}"
     );
+    // 10.5: hits[].text must be a plain string (not null, not ByteString object)
+    for hit in hits {
+        assert!(
+            hit["text"].as_str().is_some(),
+            "hit text should be a plain string, got: {hit}"
+        );
+        assert!(
+            !hit["text"].is_null() && hit["text"].get("base64").is_none(),
+            "hit text must not be a ByteString object or null, got: {hit}"
+        );
+    }
+    assert!(
+        hits[0]["text"].as_str().unwrap().contains("alpha"),
+        "hit text should contain the pattern, got: {hits:?}"
+    );
 
     // Empty pattern rejected.
     let empty = server.call_first_class(

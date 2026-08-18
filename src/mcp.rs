@@ -18,6 +18,67 @@ use crate::nb::{
     SearchNoteLines, ShowNote, ShowNoteLines, TaskStatus, TodoState,
 };
 
+fn deserialize_plain_string_with_field<'de, D>(
+    deserializer: D,
+    field: &str,
+) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(s) => Ok(s),
+        other => Err(serde::de::Error::custom(format!(
+            "field `{field}` expects a plain UTF-8 string, got {}",
+            match other {
+                serde_json::Value::Null => "null",
+                serde_json::Value::Bool(_) => "boolean",
+                serde_json::Value::Number(_) => "number",
+                serde_json::Value::Array(_) => "array",
+                serde_json::Value::Object(_) => "object",
+                serde_json::Value::String(_) => "string",
+            }
+        ))),
+    }
+}
+
+fn deserialize_plain_string_pattern<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_plain_string_with_field(d, "pattern")
+}
+fn deserialize_plain_string_replacement<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_plain_string_with_field(d, "replacement")
+}
+fn deserialize_plain_string_title<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_plain_string_with_field(d, "title")
+}
+fn deserialize_plain_string_new_body<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_plain_string_with_field(d, "new_body")
+}
+fn deserialize_plain_string_content<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_plain_string_with_field(d, "content")
+}
+fn deserialize_plain_string_search_pattern<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_plain_string_with_field(d, "pattern")
+}
+
 #[derive(Clone)]
 struct McpServer {
     nb: NbClient,
@@ -316,6 +377,7 @@ struct ReplaceNoteBodyArgs {
     #[serde(alias = "selector")]
     id: String,
     /// New body content as plain UTF-8 text. Replaces the entire note body. No base64 opt-in.
+    #[serde(deserialize_with = "deserialize_plain_string_new_body")]
     new_body: String,
     /// Body fingerprint from a preceding `show` (`b3:` + 64 lowercase hex). Required to prevent stale overwrites.
     fingerprint: String,
@@ -332,8 +394,10 @@ struct EditNoteSubstringArgs {
     #[serde(alias = "selector")]
     id: String,
     /// Byte pattern to find, as plain UTF-8 text.
+    #[serde(deserialize_with = "deserialize_plain_string_pattern")]
     pattern: String,
     /// Replacement bytes, as plain UTF-8 text.
+    #[serde(deserialize_with = "deserialize_plain_string_replacement")]
     replacement: String,
     /// Occurrence selector: `first`, `all`, or `nth` (with `n`).
     occurrence: Occurrence,
@@ -355,6 +419,7 @@ struct EditNoteSubstringArgs {
 enum McpLineEdit {
     Insert {
         at: LinePosition,
+        #[serde(deserialize_with = "deserialize_plain_string_content")]
         content: String,
     },
     Delete {
@@ -364,6 +429,7 @@ enum McpLineEdit {
     Replace {
         start: LineRef,
         end: LineRef,
+        #[serde(deserialize_with = "deserialize_plain_string_content")]
         content: String,
     },
 }
@@ -389,6 +455,7 @@ struct RetitleNoteArgs {
     #[serde(alias = "selector")]
     id: String,
     /// New title as plain UTF-8 text. Does not change the note path.
+    #[serde(deserialize_with = "deserialize_plain_string_title")]
     title: String,
     /// Bare notebook name containing the note (uses default if not specified).
     #[serde(default)]
@@ -441,6 +508,7 @@ struct SearchNoteLinesArgs {
     #[serde(alias = "selector")]
     id: String,
     /// Byte pattern to search for within body lines, as plain UTF-8 text.
+    #[serde(deserialize_with = "deserialize_plain_string_search_pattern")]
     pattern: String,
     /// Bare notebook name containing the note (uses default if not specified).
     #[serde(default)]
@@ -574,7 +642,7 @@ struct HitEnvelope {
     anchor: LineAnchor,
     start_byte: u32,
     end_byte: u32,
-    text: Option<String>,
+    text: String,
 }
 
 fn convert_mcp_line_edits(edits: Vec<McpLineEdit>) -> Result<Vec<LineEdit>, NbError> {
@@ -676,17 +744,18 @@ impl SearchNoteLinesEnvelope {
             .hits
             .into_iter()
             .map(|h| {
-                let text = match h.text {
-                    Some(bytes) => {
-                        let raw = bytes.as_bytes()?;
-                        let s = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
-                            reason: format!("hit line {} text is not valid UTF-8", h.number),
-                            location: None,
-                        })?;
-                        Some(s)
-                    }
-                    None => None,
-                };
+                let bytes = h.text.ok_or_else(|| NbError::ValidationError {
+                    reason: format!(
+                        "hit line {} text is absent; expected plain string (upstream None)",
+                        h.number
+                    ),
+                    location: None,
+                })?;
+                let raw = bytes.as_bytes()?;
+                let text = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
+                    reason: format!("hit line {} text is not valid UTF-8", h.number),
+                    location: None,
+                })?;
                 Ok(HitEnvelope {
                     number: h.number,
                     anchor: h.anchor,
