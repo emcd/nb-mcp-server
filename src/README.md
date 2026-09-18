@@ -111,10 +111,12 @@ friction without creating new routing ambiguity.
 
 The body-aware tools address notes by a flat `id` (alias `selector`) string
 exactly like `show`/`delete`/`move`; the `NoteTarget` `path` variant is
-not exposed and qualified selectors round-trip directly as `id`. Content
-fields (`pattern`, `replacement`, `title`, `new_body`, line-edit `content`)
-and line/search `text`/`title` are plain UTF-8 strings; there is no base64
-on this change's textual read/edit MCP tool surface.
+not exposed and qualified selectors round-trip directly as `id`. Since
+`nb-api 0.4`, numeric `.index` ids are surfaced alongside paths
+(`selector` + `numeric_id`; `<folder>/<id>` / `<id>` accepted, ids
+folder-local and never reused). Content fields (`pattern`,
+`replacement`, `title`, `new_body`, line-edit `content`) and line/search
+`text`/`title` are native UTF-8 strings with no base64 anywhere.
 
 - `replace_note_body` requires the body `fingerprint` from a preceding
   `show`; a stale fingerprint is rejected so a caller cannot overwrite a
@@ -123,31 +125,36 @@ on this change's textual read/edit MCP tool surface.
   `replacement`; `expected_count` must match, and an optional fingerprint
   guards against stale edits.
 - `edit_note_lines` applies a batch of disjoint `edits` verified against
-  line anchors from one original snapshot; `content` is plain UTF-8 text.
+  line anchors from one original snapshot; `content` is bare text (the
+  library appends document EOL).
 - `retitle_note` changes the `title` (plain UTF-8) without changing the path.
 - `edit_note_tags` adds/removes tags atomically.
 
+`add` creates notes only: todo-shaped content is rejected with a hint to
+use `todo` instead.
+
 Line-level reads (`show_note_lines`, `search_note_lines`) return
 text-first bounded, anchored results (`text`/`title` as plain strings) for
-search-to-edit workflows.
+search-to-edit workflows. `show_note_lines` declares document-level `eol`
+(`lf`/`crlf`) plus `has_final_eol`; there are no per-line terminators.
 
 ## Structured Results
 
 - `show` returns a text-first slim structured envelope: `selector`, `path`,
-  `kind`, `todo_state`, `title` (`Option<String>`), `tags`, `body` (full
-  decoded UTF-8 text), `body_contiguous`, and `fingerprint`. No base64 field
-  is exposed on this change's textual read/edit MCP tool surface. When the
-  source is not valid UTF-8 or the target is non-textual, `show` returns a
-  typed error carrying the detected content type plus guidance to an external
-  raw-retrieval facility outside MCP (the `nb` CLI).
+  `kind`, `todo_state`, `title` (normalized `Option<String>`), `tags`, `body`
+  (full UTF-8 text), `body_contiguous`, `fingerprint`, and `numeric_id`.
+  No base64 field is exposed. A non-UTF-8 source returns a typed `NonUtf8`
+  error (MIME hint plus external `nb` CLI guidance); a non-textual target
+  returns `UnsupportedShowTarget`.
 - Mutating tools return a structured `CommitOutcome` (`commit_created`,
-  `revision_id`, `pre_revision`, per-op `path`/`selector`/`noop`/
-  `fingerprint`) rather than raw `nb` stdout.
+  `revision_id`, `pre_revision`, per-op `path`/`selector`/`numeric_id`/
+  `noop`/`fingerprint`) rather than raw `nb` stdout.
 
 ## Typed Error Translation
 
-`nb-api 0.3` typed failures are translated identically across the
-multiplexed `nb` tool and every first-class surface:
+`nb-api 0.4` typed failures are translated identically across the
+multiplexed `nb` tool and every first-class surface, including `NonUtf8`
+and `IndexLockTimeout` (retry later; nothing mutated):
 
 - `UnsupportedShowTarget` (from `show` on a non-text selector):
   names the offending selector and actual non-text type, states

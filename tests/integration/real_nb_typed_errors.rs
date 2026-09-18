@@ -328,6 +328,15 @@ fn mutation_returns_structured_commit_outcome() {
         path.contains("session-notes/"),
         "add op path should be inside the folder; got: {path}"
     );
+    // nb-faithful mangled filename: "Outcome Note" -> outcome_note.md.
+    assert!(
+        path.ends_with("session-notes/outcome_note.md"),
+        "add op path should be title-mangled; got: {path}"
+    );
+    assert!(
+        ops[0]["numeric_id"].as_u64().is_some(),
+        "add op should report a numeric_id; got: {outcome}"
+    );
     assert!(
         ops[0]["fingerprint"].as_str().is_some(),
         "add op should report a fingerprint; got: {outcome}"
@@ -407,26 +416,15 @@ fn show_returns_structured_envelope_with_byte_exact_source() {
         fingerprint.starts_with("b3:"),
         "envelope fingerprint should be b3:; got: {fingerprint}"
     );
-}
-
-#[allow(dead_code)]
-fn base64_standard_decode(input: &str) -> Vec<u8> {
-    use base64::Engine;
-    base64::engine::general_purpose::STANDARD
-        .decode(input)
-        .unwrap_or_else(|e| panic!("invalid base64: {e}: {input:?}"))
-}
-
-#[allow(dead_code)]
-fn base64_standard_encode(input: &[u8]) -> String {
-    use base64::Engine;
-    base64::engine::general_purpose::STANDARD.encode(input)
-}
-
-/// Build a base64 `ByteString` wire value (`{"base64": "..."}`).
-#[allow(dead_code)]
-fn b64_bytes(input: &[u8]) -> Value {
-    json!({"base64": base64_standard_encode(input)})
+    // nb-api 0.4.1 numeric identity: creates are indexed, so reads carry it.
+    assert!(
+        envelope["numeric_id"].as_u64().is_some(),
+        "envelope should carry numeric_id; got: {envelope}"
+    );
+    assert!(
+        envelope["selector"].as_str().unwrap().contains(':'),
+        "envelope selector should be notebook-qualified; got: {envelope}"
+    );
 }
 
 #[test]
@@ -735,6 +733,10 @@ fn non_utf8_body_round_trips_through_show_and_replace() {
         error_text.contains("nb show"),
         "non-UTF-8 error should guide to nb show CLI; got: {error_text}"
     );
+    assert!(
+        error_text.contains("outside MCP"),
+        "non-UTF-8 error should direct raw retrieval outside MCP; got: {error_text}"
+    );
 }
 
 #[test]
@@ -848,6 +850,31 @@ fn show_note_lines_returns_windowed_anchored_lines() {
     let first = &window[0];
     assert_eq!(first["number"].as_u64(), Some(1));
     assert!(first["anchor"].as_str().unwrap().starts_with("b3l1:"));
+    // Document-level EOL declaration (nb-api 0.4.1): no per-line terminator.
+    assert_eq!(
+        lines["eol"].as_str(),
+        Some("lf"),
+        "eol should declare lf; got: {lines}"
+    );
+    assert_eq!(
+        lines["has_final_eol"].as_bool(),
+        Some(true),
+        "body ends with newline so has_final_eol; got: {lines}"
+    );
+    assert!(
+        lines["numeric_id"].as_u64().is_some(),
+        "lines result should carry numeric_id; got: {lines}"
+    );
+    for line in window {
+        assert!(
+            line.get("terminator").is_none(),
+            "no per-line terminator field; got: {line}"
+        );
+        assert!(
+            line["text"].as_str().is_some(),
+            "line text should be a plain string; got: {line}"
+        );
+    }
 
     // Invalid window (offset 0) rejected with guidance.
     let invalid = server.call_first_class(
@@ -910,11 +937,16 @@ fn search_note_lines_returns_anchored_hits() {
             hit["text"].as_str().is_some(),
             "hit text should be a plain string, got: {hit}"
         );
-        assert!(
-            !hit["text"].is_null() && hit["text"].get("base64").is_none(),
-            "hit text must not be a ByteString object or null, got: {hit}"
-        );
     }
+    // search_note_lines carries no EOL fields and no numeric_id by design.
+    assert!(
+        result.get("eol").is_none() && result.get("has_final_eol").is_none(),
+        "search result should not declare eol; got: {result}"
+    );
+    assert!(
+        result.get("numeric_id").is_none(),
+        "search result should not carry numeric_id; got: {result}"
+    );
     assert!(
         hits[0]["text"].as_str().unwrap().contains("alpha"),
         "hit text should contain the pattern, got: {hits:?}"
@@ -969,7 +1001,7 @@ fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
                     "type": "replace",
                     "start": {"number": 2, "anchor": anchor2},
                     "end": {"number": 2, "anchor": anchor2},
-                    "content": "replaced!\n",
+                    "content": "replaced!",
                 }
             ],
             "notebook": env.notebook(),
@@ -991,7 +1023,7 @@ fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
                     "type": "replace",
                     "start": {"number": 2, "anchor": anchor2},
                     "end": {"number": 2, "anchor": anchor2},
-                    "content": "stale\n",
+                    "content": "stale",
                 }
             ],
             "notebook": env.notebook(),
@@ -1034,13 +1066,13 @@ fn edit_note_lines_applies_anchored_edits_and_rejects_stale_anchors() {
                     "type": "replace",
                     "start": {"number": 1, "anchor": fresh_a1},
                     "end": {"number": 2, "anchor": fresh_a2},
-                    "content": "x\n",
+                    "content": "x",
                 },
                 {
                     "type": "replace",
                     "start": {"number": 2, "anchor": fresh_a2},
                     "end": {"number": 2, "anchor": fresh_a2},
-                    "content": "y\n",
+                    "content": "y",
                 },
             ],
             "notebook": env.notebook(),
@@ -1146,5 +1178,413 @@ fn commit_file(env: &NbTestEnv, notebook_root: &std::path::Path, rel_path: &str)
         "git commit failed: {:?} {}",
         commit,
         String::from_utf8_lossy(&commit.stderr)
+    );
+}
+
+// ---- nb-api 0.4.1 adaptation regressions ----
+
+#[test]
+fn numeric_selector_round_trip_resolves_same_note() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response = add_note_via_mcp(&mut server, &env, "Numeric Note", "Body.\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+    let numeric_id = outcome["ops"][0]["numeric_id"]
+        .as_u64()
+        .expect("create op should report numeric_id");
+    let selector = outcome["ops"][0]["selector"]
+        .as_str()
+        .expect("create op should report selector")
+        .to_string();
+
+    // Show by folder-qualified numeric id resolves to the same path as
+    // the path form (numeric ids are folder-local: root id 1 here is the
+    // session-notes folder itself, recorded per the 0.4.1 add_folder fix).
+    let by_id = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:session-notes/{numeric_id}", env.notebook()), "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        by_id["result"]["isError"].as_bool(),
+        Some(false),
+        "show by numeric id should succeed; got: {by_id}"
+    );
+    let by_id_json = RealNbServer::result_json(&by_id);
+    assert_eq!(
+        by_id_json["path"].as_str(),
+        Some(path.as_str()),
+        "numeric-id show should resolve the same path; got: {by_id_json}"
+    );
+    assert_eq!(
+        by_id_json["numeric_id"].as_u64(),
+        Some(numeric_id),
+        "numeric-id show should echo numeric_id; got: {by_id_json}"
+    );
+    // The outcome selector itself round-trips.
+    let by_selector =
+        server.call_first_class("show", json!({"id": selector, "notebook": env.notebook()}));
+    assert_eq!(
+        by_selector["result"]["isError"].as_bool(),
+        Some(false),
+        "show by outcome selector should succeed; got: {by_selector}"
+    );
+}
+
+#[test]
+fn show_note_lines_title_stays_normalized() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response = add_note_via_mcp(&mut server, &env, "Raw H1 Title", "Body.\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    // show path: normalized via upstream title_text.
+    let show = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let show_json = RealNbServer::result_json(&show);
+    assert_eq!(
+        show_json["title"].as_str(),
+        Some("Raw H1 Title"),
+        "show title should be normalized; got: {show_json}"
+    );
+
+    // show_note_lines path: retained normalization over raw H1 must match.
+    let lines = server.call_first_class(
+        "show_note_lines",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let lines_json = RealNbServer::result_json(&lines);
+    assert_eq!(
+        lines_json["title"].as_str(),
+        Some("Raw H1 Title"),
+        "show_note_lines title should match show; got: {lines_json}"
+    );
+}
+
+#[test]
+fn edit_note_lines_bare_text_replace_preserves_line_breaks() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response = add_note_via_mcp(
+        &mut server,
+        &env,
+        "Breaks Note",
+        "line one\nline two\nline three\n",
+    );
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let read = server.call_first_class(
+        "show_note_lines",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let read_json = RealNbServer::result_json(&read);
+    let anchor2 = read_json["lines"][1]["anchor"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Bare-text content (no terminator): the library appends document eol,
+    // so the following line must remain a separate line (no merge).
+    let ok = server.call_first_class(
+        "edit_note_lines",
+        json!({
+            "id": format!("{}:{path}", env.notebook()),
+            "edits": [
+                {
+                    "type": "replace",
+                    "start": {"number": 2, "anchor": anchor2},
+                    "end": {"number": 2, "anchor": anchor2},
+                    "content": "LINE TWO",
+                }
+            ],
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        ok["result"]["isError"].as_bool(),
+        Some(false),
+        "bare-text replace should succeed; got: {ok}"
+    );
+
+    let after = server.call_first_class(
+        "show_note_lines",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let after_json = RealNbServer::result_json(&after);
+    assert_eq!(
+        after_json["total_lines"].as_u64(),
+        Some(3),
+        "replace must not merge lines; got: {after_json}"
+    );
+    let texts: Vec<&str> = after_json["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        texts,
+        vec!["line one", "LINE TWO", "line three"],
+        "line texts should reflect the bare-text replace; got: {texts:?}"
+    );
+}
+
+#[test]
+fn edit_note_lines_dollar_insert_terminates_final_line() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    // Unterminated final line: eol declared, has_final_eol false.
+    let add_response = add_note_via_mcp(&mut server, &env, "Dollar Note", "one\ntwo");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let read = server.call_first_class(
+        "show_note_lines",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let read_json = RealNbServer::result_json(&read);
+    assert_eq!(
+        read_json["has_final_eol"].as_bool(),
+        Some(false),
+        "unterminated body should report has_final_eol false; got: {read_json}"
+    );
+
+    let ok = server.call_first_class(
+        "edit_note_lines",
+        json!({
+            "id": format!("{}:{path}", env.notebook()),
+            "edits": [
+                {"type": "insert", "at": {"type": "boundary", "at": "dollar"}, "content": "three"}
+            ],
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        ok["result"]["isError"].as_bool(),
+        Some(false),
+        "dollar insert should succeed; got: {ok}"
+    );
+
+    let show = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let show_json = RealNbServer::result_json(&show);
+    assert_eq!(
+        show_json["body"].as_str(),
+        Some("one\ntwo\nthree\n"),
+        "dollar insert should terminate the final line then append; got: {show_json}"
+    );
+}
+
+#[test]
+fn add_rejects_todo_shaped_content() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+
+    // Unchecked checkbox rejected on both surfaces with identical wording.
+    let payload = json!({
+        "folder": "session-notes",
+        "title": "Unchecked",
+        "content": "Notes here.\n\n- [ ] buy milk\n",
+        "notebook": env.notebook(),
+    });
+    let direct = server.call_first_class("add", payload.clone());
+    let multiplexed = server.call_multiplexed("nb.add", payload);
+    for (label, response) in [("direct", &direct), ("multiplexed", &multiplexed)] {
+        assert_eq!(
+            response["result"]["isError"].as_bool(),
+            Some(true),
+            "[{label}] unchecked checkbox add should be rejected; got: {response}"
+        );
+        let text = RealNbServer::error_text(response);
+        assert!(
+            text.contains("`todo`"),
+            "[{label}] rejection should name todo; got: {text}"
+        );
+    }
+    assert_eq!(
+        RealNbServer::error_text(&direct),
+        RealNbServer::error_text(&multiplexed),
+        "guard wording must be parity across surfaces"
+    );
+
+    // Checked-only checkbox rejected.
+    let checked = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Checked",
+            "content": "Done list.\n\n- [x] done\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        checked["result"]["isError"].as_bool(),
+        Some(true),
+        "checked-only checkbox add should be rejected; got: {checked}"
+    );
+
+    // Tasks heading rejected.
+    let heading = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Heading",
+            "content": "Plan.\n\n## Tasks\n\nstuff\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        heading["result"]["isError"].as_bool(),
+        Some(true),
+        "Tasks-heading add should be rejected; got: {heading}"
+    );
+
+    // Fenced checkbox allowed.
+    let fenced_box = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Fenced Box",
+            "content": "Example:\n\n```\n- [ ] not a task\n```\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        fenced_box["result"]["isError"].as_bool(),
+        Some(false),
+        "fenced checkbox add should be accepted; got: {fenced_box}"
+    );
+
+    // Fenced Tasks heading allowed.
+    let fenced_tasks = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Fenced Tasks",
+            "content": "Example:\n\n```\n## Tasks\n```\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        fenced_tasks["result"]["isError"].as_bool(),
+        Some(false),
+        "fenced Tasks-heading add should be accepted; got: {fenced_tasks}"
+    );
+}
+
+#[test]
+fn show_titles_agree_on_leading_hash_title() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    // Raw H1 line is `# #hashtag`; upstream title_text is `#hashtag`.
+    // Both MCP paths must return `#hashtag` (no double-strip on show).
+    let add_response = add_note_via_mcp(&mut server, &env, "#hashtag", "Body text.\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let show = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let show_json = RealNbServer::result_json(&show);
+    assert_eq!(
+        show_json["title"].as_str(),
+        Some("#hashtag"),
+        "show must not strip a genuine leading hash; got: {show_json}"
+    );
+
+    let lines = server.call_first_class(
+        "show_note_lines",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let lines_json = RealNbServer::result_json(&lines);
+    assert_eq!(
+        lines_json["title"].as_str(),
+        Some("#hashtag"),
+        "show_note_lines must agree with show; got: {lines_json}"
+    );
+}
+
+#[test]
+fn add_fence_tracking_follows_commonmark_shape() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+
+    // Nested triple-backtick sample inside a four-backtick fence stays
+    // content: the inner ```rust opener must not close the guard early.
+    let nested = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Nested Fence",
+            "content": "Doc sample:\n\n````\n```rust\n- [ ] not a task\n```\n````\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        nested["result"]["isError"].as_bool(),
+        Some(false),
+        "checkbox inside a longer fence should be accepted; got: {nested}"
+    );
+
+    // A four-space-indented marker never opens a fence, so the following
+    // real checkbox is still detected and rejected.
+    let indented = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Indented Fence",
+            "content": "    ```\n- [ ] real task\n    ```\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        indented["result"]["isError"].as_bool(),
+        Some(true),
+        "indented marker must not suppress a real checklist; got: {indented}"
+    );
+    assert!(
+        RealNbServer::error_text(&indented).contains("`todo`"),
+        "indented-fence rejection should name todo; got: {}",
+        RealNbServer::error_text(&indented)
+    );
+
+    // Opposite-marker lines inside a fence stay content.
+    let mixed = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Mixed Fence",
+            "content": "Doc:\n\n~~~\n```\n- [ ] not a task\n~~~\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        mixed["result"]["isError"].as_bool(),
+        Some(false),
+        "opposite-marker lines inside a fence are content; got: {mixed}"
+    );
+
+    // An invalid backtick opener (backtick in info string) opens nothing,
+    // so the following real checkbox is still detected and rejected.
+    let bad_info = server.call_first_class(
+        "add",
+        json!({
+            "folder": "session-notes",
+            "title": "Bad Info",
+            "content": "Doc:\n\n```lang`tick\n- [ ] real task\n```\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        bad_info["result"]["isError"].as_bool(),
+        Some(true),
+        "invalid backtick-info opener must not hide a checklist; got: {bad_info}"
     );
 }

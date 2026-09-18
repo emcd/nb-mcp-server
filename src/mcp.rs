@@ -13,9 +13,9 @@ use tracing::{info, warn};
 use crate::Config;
 use crate::git_signing;
 use crate::nb::{
-    ByteString, CommitOutcome, DocumentKind, Fingerprint, LineAnchor, LineEdit, LinePosition,
-    LineRef, LineTerminator, NbClient, NbError, NoteTarget, Occurrence, SearchMode,
-    SearchNoteLines, ShowNote, ShowNoteLines, TaskStatus, TodoState,
+    CommitOutcome, DocumentKind, Fingerprint, LineAnchor, LineEdit, LineEol, LinePosition, LineRef,
+    NbClient, NbError, NoteTarget, Occurrence, SearchMode, SearchNoteLines, ShowNote,
+    ShowNoteLines, TaskStatus, TodoState,
 };
 
 fn deserialize_plain_string_with_field<'de, D>(
@@ -516,7 +516,7 @@ struct SearchNoteLinesArgs {
     notebook: Option<String>,
 }
 
-/// Text-first slim `show` envelope (no base64, Option<String> title, String body).
+/// Text-first slim `show` envelope (native `String` wire, normalized title).
 #[derive(Debug, Serialize)]
 struct ShowEnvelope {
     selector: String,
@@ -528,83 +528,45 @@ struct ShowEnvelope {
     body: String,
     body_contiguous: bool,
     fingerprint: Fingerprint,
+    numeric_id: Option<u32>,
+}
+
+/// Normalize a raw title H1 line to plain title text: strip the trailing
+/// newline, leading `#` run, and surrounding whitespace. Used ONLY for the
+/// raw `ShowNoteLines.title` H1 line (upstream exposes no `title_text` on
+/// that type). MUST NOT be applied to the already-normalized upstream
+/// `ShowNote.title_text` — a genuine leading-`#` title (raw `# #hashtag`)
+/// would otherwise lose it on one path but not the other.
+fn normalize_title_text(raw: &str) -> String {
+    raw.trim_end_matches('\n')
+        .trim_end_matches('\r')
+        .trim_start_matches('#')
+        .trim()
+        .to_string()
 }
 
 impl ShowEnvelope {
-    fn from_show(shown: ShowNote) -> Result<Self, NbError> {
-        // Strict UTF-8 validation: non-UTF-8 source yields a typed recovery error.
-        let source_bytes = shown.source.as_bytes()?;
-        if std::str::from_utf8(&source_bytes).is_err() {
-            let mime_hint = mime_hint_for_bytes(&source_bytes);
-            return Err(NbError::ValidationError {
-                reason: format!(
-                    "Note `{}` source is not valid UTF-8 (detected {mime_hint}); no base64 on this change's textual read/edit MCP tool surface. \
-                     Hint: retrieve raw bytes outside MCP with `nb show <selector> --print --no-color` or `nb show <selector> --print --raw` and handle locally.",
-                    shown.selector
-                ),
-                location: None,
-            });
-        }
-        let body_bytes = shown.body.as_bytes()?;
-        let body = String::from_utf8(body_bytes).map_err(|_| NbError::ValidationError {
-            reason: format!(
-                "Note `{}` body is not valid UTF-8; no base64 on this change's textual read/edit MCP tool surface. \
-                 Hint: retrieve raw bytes outside MCP with `nb show <selector>` and handle locally.",
-                shown.selector
-            ),
-            location: None,
-        })?;
-        let title = match shown.title {
-            Some(bytes) => {
-                let raw = bytes.as_bytes()?;
-                let s = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
-                    reason: format!(
-                        "Note `{}` title is not valid UTF-8; no base64 on this change's textual read/edit MCP tool surface.",
-                        shown.selector
-                    ),
-                    location: None,
-                })?;
-                // Mirror nb-api's title_text trimming: strip leading '#', surrounding
-                // whitespace, and trailing newline so the MCP surface exposes plain text.
-                let trimmed = s
-                    .trim_end_matches('\n')
-                    .trim_end_matches('\r')
-                    .trim_start_matches('#')
-                    .trim()
-                    .to_string();
-                Some(trimmed)
-            }
-            None => None,
-        };
-        Ok(Self {
+    fn from_show(shown: ShowNote) -> Self {
+        // `show` maps the already-normalized upstream `title_text` directly;
+        // the raw `title` H1 line is never exposed. Body/source arrive as
+        // native `String` (non-UTF-8 surfaces as typed `NonUtf8` upstream,
+        // translated in `present_nb_error`).
+        Self {
             selector: shown.selector,
             path: shown.path,
             kind: shown.kind,
             todo_state: shown.todo_state,
-            title,
+            title: shown.title_text,
             tags: shown.tags,
-            body,
+            body: shown.body,
             body_contiguous: shown.body_contiguous,
             fingerprint: shown.fingerprint,
-        })
+            numeric_id: shown.numeric_id,
+        }
     }
 }
 
-fn mime_hint_for_bytes(bytes: &[u8]) -> &'static str {
-    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        "image/jpeg"
-    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
-        "image/png"
-    } else if bytes.starts_with(&[0x25, b'P', b'D', b'F']) {
-        "application/pdf"
-    } else if bytes.starts_with(&[0x1F, 0x8B]) {
-        "application/gzip"
-    } else {
-        "application/octet-stream"
-    }
-}
-
-/// Text-first line envelope.
+/// Text-first line envelope with document-level EOL declaration.
 #[derive(Debug, Serialize)]
 struct ShowNoteLinesEnvelope {
     selector: String,
@@ -617,6 +579,9 @@ struct ShowNoteLinesEnvelope {
     lines: Vec<NoteLineEnvelope>,
     title: Option<String>,
     body_fingerprint: Fingerprint,
+    eol: Option<LineEol>,
+    has_final_eol: bool,
+    numeric_id: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -624,7 +589,6 @@ struct NoteLineEnvelope {
     number: u32,
     anchor: LineAnchor,
     text: String,
-    terminator: LineTerminator,
 }
 
 #[derive(Debug, Serialize)]
@@ -645,34 +609,29 @@ struct HitEnvelope {
     text: String,
 }
 
-fn convert_mcp_line_edits(edits: Vec<McpLineEdit>) -> Result<Vec<LineEdit>, NbError> {
+fn convert_mcp_line_edits(edits: Vec<McpLineEdit>) -> Vec<LineEdit> {
     edits
         .into_iter()
         .map(|e| match e {
-            McpLineEdit::Insert { at, content } => Ok(LineEdit::Insert {
-                at,
-                content: ByteString::from_bytes(content.into_bytes()),
-            }),
-            McpLineEdit::Delete { start, end } => Ok(LineEdit::Delete { start, end }),
+            // Bare-text content; the library appends document `eol` bytes.
+            McpLineEdit::Insert { at, content } => LineEdit::Insert { at, content },
+            McpLineEdit::Delete { start, end } => LineEdit::Delete { start, end },
             McpLineEdit::Replace {
                 start,
                 end,
                 content,
-            } => Ok(LineEdit::Replace {
+            } => LineEdit::Replace {
                 start,
                 end,
-                content: ByteString::from_bytes(content.into_bytes()),
-            }),
+                content,
+            },
         })
         .collect()
 }
 
 fn show_note_lines_result(result: Result<ShowNoteLines, NbError>) -> CallToolResult {
     match result {
-        Ok(shown) => match ShowNoteLinesEnvelope::from_wire(shown) {
-            Ok(envelope) => json_success(&envelope),
-            Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
-        },
+        Ok(envelope) => json_success(&ShowNoteLinesEnvelope::from_wire(envelope)),
         Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
     }
 }
@@ -688,42 +647,21 @@ fn search_note_lines_result(result: Result<SearchNoteLines, NbError>) -> CallToo
 }
 
 impl ShowNoteLinesEnvelope {
-    fn from_wire(shown: ShowNoteLines) -> Result<Self, NbError> {
-        let title = match shown.title {
-            Some(bytes) => {
-                let raw = bytes.as_bytes()?;
-                let s = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
-                    reason: "show_note_lines title is not valid UTF-8".to_string(),
-                    location: None,
-                })?;
-                let trimmed = s
-                    .trim_end_matches('\n')
-                    .trim_end_matches('\r')
-                    .trim_start_matches('#')
-                    .trim()
-                    .to_string();
-                Some(trimmed)
-            }
-            None => None,
-        };
+    fn from_wire(shown: ShowNoteLines) -> Self {
+        // Upstream `ShowNoteLines.title` is the raw H1 line (no `title_text`
+        // on this type); retain the normalization mapping so MCP `title`
+        // matches the `show` path. Lines/eol/numeric_id pass through.
+        let title = shown.title.as_deref().map(normalize_title_text);
         let lines = shown
             .lines
             .into_iter()
-            .map(|l| {
-                let raw = l.text.as_bytes()?;
-                let text = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
-                    reason: format!("line {} text is not valid UTF-8", l.number),
-                    location: None,
-                })?;
-                Ok(NoteLineEnvelope {
-                    number: l.number,
-                    anchor: l.anchor,
-                    text,
-                    terminator: l.terminator,
-                })
+            .map(|l| NoteLineEnvelope {
+                number: l.number,
+                anchor: l.anchor,
+                text: l.text,
             })
-            .collect::<Result<Vec<_>, NbError>>()?;
-        Ok(Self {
+            .collect();
+        Self {
             selector: shown.selector,
             path: shown.path,
             kind: shown.kind,
@@ -734,26 +672,26 @@ impl ShowNoteLinesEnvelope {
             lines,
             title,
             body_fingerprint: shown.body_fingerprint,
-        })
+            eol: shown.eol,
+            has_final_eol: shown.has_final_eol,
+            numeric_id: shown.numeric_id,
+        }
     }
 }
 
 impl SearchNoteLinesEnvelope {
     fn from_wire(shown: SearchNoteLines) -> Result<Self, NbError> {
+        // No EOL fields and no `numeric_id` on this upstream type by design;
+        // hit text passes through as native `String`.
         let hits = shown
             .hits
             .into_iter()
             .map(|h| {
-                let bytes = h.text.ok_or_else(|| NbError::ValidationError {
+                let text = h.text.ok_or_else(|| NbError::ValidationError {
                     reason: format!(
                         "hit line {} text is absent; expected plain string (upstream None)",
                         h.number
                     ),
-                    location: None,
-                })?;
-                let raw = bytes.as_bytes()?;
-                let text = String::from_utf8(raw).map_err(|_| NbError::ValidationError {
-                    reason: format!("hit line {} text is not valid UTF-8", h.number),
                     location: None,
                 })?;
                 Ok(HitEnvelope {
@@ -806,7 +744,7 @@ impl McpServer {
 
     #[tool(
         name = "add",
-        description = "Create a new note. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them."
+        description = "Create a new note (DocumentKind::Note). Do NOT use for todos or checklists — use the `todo` tool instead; todo-shaped content (checkboxes, Tasks heading) is rejected. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them."
     )]
     async fn nb_add(
         &self,
@@ -828,7 +766,7 @@ impl McpServer {
 
     #[tool(
         name = "todo",
-        description = "Create a todo item. The folder field is required by default; title is required; optional description/content and tasks[] create checklist items."
+        description = "Create a todo item (DocumentKind::Todo) with checkbox state and optional checklist tasks. Use this — not `add` — for anything with checkboxes or a Tasks section. The folder field is required by default; title is required; optional description/content and tasks[] create checklist items."
     )]
     async fn nb_todo(
         &self,
@@ -1120,6 +1058,9 @@ impl McpServer {
             "notebooks" => text_result(self.nb.list_notebooks().await),
             "add" => {
                 let args: AddArgs = parse_or_return!(AddArgs, call.args);
+                if todo_shaped_content(&args.content) {
+                    return Ok(todo_shaped_add_rejection());
+                }
                 outcome_result(
                     self.nb
                         .add_note(
@@ -1310,6 +1251,9 @@ impl McpServer {
     // These reuse the same NbClient methods as dispatch_nb.
 
     async fn dispatch_add(&self, args: AddArgs) -> Result<CallToolResult, McpError> {
+        if todo_shaped_content(&args.content) {
+            return Ok(todo_shaped_add_rejection());
+        }
         let result = self
             .nb
             .add_note(
@@ -1396,10 +1340,14 @@ impl McpServer {
             Err(err) => return Ok(nb_error_result(err)),
         };
         let target = NoteTarget::selector(args.id);
-        let new_body = args.new_body.into_bytes();
         let result = self
             .nb
-            .replace_note_body(target, new_body, fingerprint, args.notebook.as_deref())
+            .replace_note_body(
+                target,
+                &args.new_body,
+                fingerprint,
+                args.notebook.as_deref(),
+            )
             .await;
         Ok(outcome_result(result))
     }
@@ -1416,14 +1364,12 @@ impl McpServer {
             None => None,
         };
         let target = NoteTarget::selector(args.id);
-        let pattern = args.pattern.into_bytes();
-        let replacement = args.replacement.into_bytes();
         let result = self
             .nb
             .edit_note_substring(
                 target,
-                pattern,
-                replacement,
+                &args.pattern,
+                &args.replacement,
                 args.occurrence,
                 args.expected_count,
                 fingerprint,
@@ -1438,10 +1384,7 @@ impl McpServer {
         args: EditNoteLinesArgs,
     ) -> Result<CallToolResult, McpError> {
         let target = NoteTarget::selector(args.id);
-        let edits = match convert_mcp_line_edits(args.edits) {
-            Ok(edits) => edits,
-            Err(err) => return Ok(nb_error_result(err)),
-        };
+        let edits = convert_mcp_line_edits(args.edits);
         let result = self
             .nb
             .edit_note_lines(target, edits, args.notebook.as_deref())
@@ -1454,10 +1397,9 @@ impl McpServer {
         args: RetitleNoteArgs,
     ) -> Result<CallToolResult, McpError> {
         let target = NoteTarget::selector(args.id);
-        let title = args.title.into_bytes();
         let result = self
             .nb
-            .retitle_note(target, title, args.notebook.as_deref())
+            .retitle_note(target, &args.title, args.notebook.as_deref())
             .await;
         Ok(outcome_result(result))
     }
@@ -1491,10 +1433,9 @@ impl McpServer {
         args: SearchNoteLinesArgs,
     ) -> Result<CallToolResult, McpError> {
         let target = NoteTarget::selector(args.id);
-        let pattern = args.pattern.into_bytes();
         let result = self
             .nb
-            .search_note_lines(target, &pattern, args.notebook.as_deref())
+            .search_note_lines(target, &args.pattern, args.notebook.as_deref())
             .await;
         Ok(search_note_lines_result(result))
     }
@@ -1631,6 +1572,103 @@ fn tool_error(message: impl Into<String>) -> CallToolResult {
     CallToolResult::error(vec![Content::text(message.into())])
 }
 
+/// A fenced code block opener: marker character plus run length, per
+/// CommonMark rules (up to three leading spaces, run of at least three).
+/// The closing fence must use the same marker, a run at least as long, and
+/// carry no info text — so a shorter same-marker run (e.g. a documented
+/// nested ``` sample inside a ```` fence) stays content, and an indented
+/// (4+ space) marker line never opens a fence.
+struct OpenFence {
+    marker: char,
+    len: usize,
+}
+
+/// Parse a fence marker line: up to three leading spaces, then a run of at
+/// least three backticks or tildes. Returns marker, run length, and the
+/// trailing remainder (info text, if any).
+fn fence_marker(line: &str) -> Option<(char, usize, &str)> {
+    let spaces = line.bytes().take_while(|&b| b == b' ').count();
+    if spaces > 3 {
+        return None;
+    }
+    let rest = &line[spaces..];
+    let marker = rest.chars().next()?;
+    if marker != '`' && marker != '~' {
+        return None;
+    }
+    let len = rest.chars().take_while(|&c| c == marker).count();
+    if len < 3 {
+        return None;
+    }
+    // CommonMark: a backtick fence's info string must not contain a
+    // backtick, so such a line is not an opener at all (tilde fences may
+    // retain backticks in info). Without this, an invalid opener could
+    // swallow a following real checklist into phantom fenced content.
+    let info = &rest[len..];
+    if marker == '`' && info.contains('`') {
+        return None;
+    }
+    Some((marker, len, info))
+}
+
+/// Detect todo-shaped `add` content: markdown checkboxes (`-`/`*` + `[ ]`/`[x]`/`[X]`)
+/// or an ATX `Tasks` heading, in either case outside fenced code blocks.
+/// Inline code spans do not exempt a line.
+fn todo_shaped_content(content: &str) -> bool {
+    let mut fence: Option<OpenFence> = None;
+    for line in content.lines() {
+        if let Some((marker, len, info)) = fence_marker(line) {
+            match &fence {
+                None => {
+                    fence = Some(OpenFence { marker, len });
+                }
+                Some(open)
+                    if open.marker == marker && len >= open.len && info.trim().is_empty() =>
+                {
+                    fence = None;
+                }
+                _ => {}
+            }
+            continue;
+        }
+        if fence.is_some() {
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed
+            .strip_prefix('-')
+            .or_else(|| trimmed.strip_prefix('*'))
+            .map(str::trim_start)
+        {
+            let bytes = rest.as_bytes();
+            if bytes.len() >= 3
+                && bytes[0] == b'['
+                && (bytes[1] == b' ' || bytes[1] == b'x' || bytes[1] == b'X')
+                && bytes[2] == b']'
+            {
+                return true;
+            }
+        }
+        let hashes = trimmed.bytes().take_while(|&b| b == b'#').count();
+        if (1..=6).contains(&hashes) {
+            let rest = &trimmed[hashes..];
+            if rest.starts_with([' ', '\t']) && rest.trim() == "Tasks" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn todo_shaped_add_rejection() -> CallToolResult {
+    tool_error(
+        "Invalid args for add.\n\
+         Reason: content looks like a todo (checkbox or Tasks heading); `add` \
+         creates a note, not a todo.\n\
+         Hint: use the `todo` tool instead of `add` for checklists.",
+    )
+}
+
 /// Present a `Result<String, NbError>` (reads) as a text tool result.
 fn text_result(result: Result<String, NbError>) -> CallToolResult {
     match result {
@@ -1650,10 +1688,7 @@ fn outcome_result(result: Result<CommitOutcome, NbError>) -> CallToolResult {
 /// Present a `Result<ShowNote, NbError>` as the structured envelope.
 fn show_result(result: Result<ShowNote, NbError>) -> CallToolResult {
     match result {
-        Ok(shown) => match ShowEnvelope::from_show(shown) {
-            Ok(envelope) => json_success(&envelope),
-            Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
-        },
+        Ok(shown) => json_success(&ShowEnvelope::from_show(shown)),
         Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
     }
 }
@@ -1805,6 +1840,27 @@ fn present_nb_error(err: &NbError) -> String {
         NbError::UnsupportedStructure { reason } => {
             format!("Unsupported notebook structure: {reason}")
         }
+        NbError::NonUtf8 {
+            selector,
+            path,
+            kind,
+            mime_hint,
+        } => format!(
+            "Invalid args for show.\n\
+             Reason: `{selector}` (`{path}`, kind={kind}) is not valid UTF-8{}; \
+             structured reads carry text only, never base64 bytes.\n\
+             Hint: retrieve raw bytes outside MCP with \
+             `nb show {selector} --print --no-color` and handle locally.",
+            mime_hint
+                .as_deref()
+                .map(|m| format!("; detected {m}"))
+                .unwrap_or_default()
+        ),
+        NbError::IndexLockTimeout { path, timeout_ms } => format!(
+            "The notebook index at `{path}` is busy; the lock wait timed out \
+             after {timeout_ms}ms and nothing was mutated.\n\
+             Hint: retry later; concurrent notebook operations are serialized."
+        ),
         NbError::InvalidFingerprint { reason } => format!(
             "Invalid fingerprint: {reason}.\n\
              Hint: a fingerprint is `b3:` followed by 64 lowercase hex digits, \
@@ -1824,6 +1880,15 @@ fn json_type_name(value: &serde_json::Value) -> &'static str {
         serde_json::Value::Object(_) => "object",
     }
 }
+
+/// Shared `add` description: mirrors the `#[tool(name = "add")]`
+/// registration literally. Keep the two in sync; the help test
+/// `help_add_todo_descriptions_name_note_todo_kinds` guards this.
+const ADD_TOOL_DESCRIPTION: &str = "Create a new note (DocumentKind::Note). Do NOT use for todos or checklists — use the `todo` tool instead; todo-shaped content (checkboxes, Tasks heading) is rejected. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them.";
+
+/// Shared `todo` description: mirrors the `#[tool(name = "todo")]`
+/// registration literally. Keep the two in sync (see above).
+const TODO_TOOL_DESCRIPTION: &str = "Create a todo item (DocumentKind::Todo) with checkbox state and optional checklist tasks. Use this — not `add` — for anything with checkboxes or a Tasks section. The folder field is required by default; title is required; optional description/content and tasks[] create checklist items.";
 
 fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
     let query = params.query.trim();
@@ -1855,13 +1920,13 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "commands": [
                 {"command": "nb.status", "description": "Show current notebook and stats"},
                 {"command": "nb.notebooks", "description": "List available notebooks (list-only; no add/delete in MCP)"},
-                {"command": "nb.add", "description": "Create a new note (folder required by default)"},
+                {"command": "nb.add", "description": "Create a new note (DocumentKind::Note; not todos — use `todo`)"},
                 {"command": "nb.show", "description": "Read a note's content (structured envelope)"},
                 {"command": "nb.delete", "description": "Delete a note"},
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
                 {"command": "nb.search", "description": "Full-text search notes (queries[] + mode any|all)"},
-                {"command": "nb.todo", "description": "Create a todo item (folder required by default; title required; optional description/content and tasks[] checklist)"},
+                {"command": "nb.todo", "description": "Create a todo item (DocumentKind::Todo; use for checklists, not `add`)"},
                 {"command": "nb.do", "description": "Mark a todo as complete (optional task_number)"},
                 {"command": "nb.undo", "description": "Reopen a completed todo (optional task_number)"},
                 {"command": "nb.tasks", "description": "List todo items recursively (optional status: open|closed)"},
@@ -1873,13 +1938,13 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "first_class_tools": [
                 {"tool": "status", "description": "Show current notebook and stats"},
                 {"tool": "notebooks", "description": "List available notebooks"},
-                {"tool": "add", "description": "Create a new note (folder required by default)"},
+                {"tool": "add", "description": "Create a new note (DocumentKind::Note; not todos — use `todo`)"},
                 {"tool": "show", "description": "Read a note's content (structured envelope)"},
                 {"tool": "delete", "description": "Delete a note"},
                 {"tool": "move", "description": "Move or rename a note"},
                 {"tool": "list", "description": "List notes with optional filtering"},
                 {"tool": "search", "description": "Full-text search notes (queries[] + mode any|all)"},
-                {"tool": "todo", "description": "Create a todo item (folder required by default)"},
+                {"tool": "todo", "description": "Create a todo item (DocumentKind::Todo; use for checklists, not `add`)"},
                 {"tool": "do", "description": "Mark a todo as complete"},
                 {"tool": "undo", "description": "Reopen a completed todo"},
                 {"tool": "tasks", "description": "List todo items (optional status: open|closed)"},
@@ -1905,11 +1970,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "Show notebook status",
             json_schema_for::<StatusArgs>(),
         ),
-        "nb.add" => command_help(
-            "nb.add",
-            "Create a new note. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them.",
-            json_schema_for::<AddArgs>(),
-        ),
+        "nb.add" => command_help("nb.add", ADD_TOOL_DESCRIPTION, json_schema_for::<AddArgs>()),
         "nb.show" => command_help(
             "nb.show",
             "Read a note's content as a text-first structured envelope (selector, path, kind, todo_state, title, tags, body, body_contiguous, fingerprint)",
@@ -1937,7 +1998,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
         ),
         "nb.todo" => command_help(
             "nb.todo",
-            "Create a todo item. The folder field is required by default; title is required; optional description/content and tasks[] create checklist items.",
+            TODO_TOOL_DESCRIPTION,
             json_schema_for::<TodoArgs>(),
         ),
         "nb.do" => command_help(
@@ -1991,11 +2052,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "List available notebooks (list-only; notebook creation/deletion is not exposed via MCP).",
             serde_json::json!({"type": "object", "properties": {}}),
         ),
-        "add" => first_class_help(
-            "add",
-            "Create a new note. The folder field is required by default; use nb.mkdir to create folders and nb.folders to list them.",
-            json_schema_for::<AddArgs>(),
-        ),
+        "add" => first_class_help("add", ADD_TOOL_DESCRIPTION, json_schema_for::<AddArgs>()),
         "show" => first_class_help(
             "show",
             "Read a note's content as a text-first structured envelope (selector, path, kind, todo_state, title, tags, body, body_contiguous, fingerprint).",
@@ -2017,11 +2074,7 @@ fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
             "Full-text search notes (queries[] required; mode: any default OR, mode: all for AND).",
             json_schema_for::<SearchArgs>(),
         ),
-        "todo" => first_class_help(
-            "todo",
-            "Create a todo item. The folder field is required by default; title is required.",
-            json_schema_for::<TodoArgs>(),
-        ),
+        "todo" => first_class_help("todo", TODO_TOOL_DESCRIPTION, json_schema_for::<TodoArgs>()),
         "do" => first_class_help(
             "do",
             "Mark a todo as complete (optional task_number).",

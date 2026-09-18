@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Rebuilt the body-aware MCP surface on the published `nb-api 0.4.1`
+  release: all structured text is native UTF-8 strings with no base64
+  anywhere on the wire, `show_note_lines` declares document-level `eol`
+  (`lf`/`crlf`) plus `has_final_eol` instead of per-line terminators, and
+  line-edit `content` is bare text with the library appending document
+  EOL.
+- Surfaced notebook numeric identity: reads and mutation outcomes carry
+  `selector` plus `numeric_id`, and `<folder>/<id>` / `<id>` are accepted
+  as note addresses (ids are folder-local, positional, and never reused;
+  paths stay canonical). New notes use filenames mangled from the title.
+- Translated the new `NonUtf8` and `IndexLockTimeout` failures into
+  recovery-oriented MCP diagnostics (raw-bytes guidance outside MCP,
+  retry-later on index contention).
+- Rejected todo-shaped `add` content (checkbox lines or a `Tasks`
+  heading outside fenced code blocks) with a hint to use the `todo`
+  tool instead.
+
 ## [0.14.0] - 2026-07-19
 
 ### Added

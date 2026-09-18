@@ -906,3 +906,81 @@ fn multiplexed_folders_passes_exact_shim_output() {
     let response = server.call_nb("nb.folders", json!({}));
     assert_passthrough_exact("multiplexed nb.folders", &response, EXPECTED_FOLDERS);
 }
+
+// Help-text consistency: add/todo guidance must name the Note/Todo kinds
+// everywhere help describes them (detailed entries and nb overview).
+
+fn help_description(server: &mut McpProcess, query: &str) -> String {
+    let response = server.call_help(query);
+    let help = tool_json(&response);
+    help["description"].as_str().unwrap_or_default().to_string()
+}
+
+#[test]
+fn help_add_todo_descriptions_name_note_todo_kinds() {
+    let shim = shim_env();
+    let mut server = start_server(&shim);
+    for query in ["nb.add", "add"] {
+        let description = help_description(&mut server, query);
+        assert!(
+            description.contains("DocumentKind::Note"),
+            "{query} help should name DocumentKind::Note; got: {description}"
+        );
+        assert!(
+            description.contains("`todo`"),
+            "{query} help should point at todo; got: {description}"
+        );
+    }
+    for query in ["nb.todo", "todo"] {
+        let description = help_description(&mut server, query);
+        assert!(
+            description.contains("DocumentKind::Todo"),
+            "{query} help should name DocumentKind::Todo; got: {description}"
+        );
+        assert!(
+            description.contains("`add`"),
+            "{query} help should contrast with add; got: {description}"
+        );
+    }
+    // nb overview entries carry the short pointer form (both arrays).
+    let response = server.call_help("nb");
+    let help = tool_json(&response);
+    let first_class = help["first_class_tools"].as_array().unwrap();
+    let entry = |tool: &str| {
+        first_class
+            .iter()
+            .find(|t| t["tool"].as_str() == Some(tool))
+            .unwrap()["description"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert!(
+        entry("add").contains("`todo`"),
+        "nb overview add entry should point at todo"
+    );
+    assert!(
+        entry("todo").contains("`add`"),
+        "nb overview todo entry should contrast with add"
+    );
+    let commands = help["commands"].as_array().unwrap();
+    let command_entry = |command: &str| {
+        commands
+            .iter()
+            .find(|t| t["command"].as_str() == Some(command))
+            .unwrap()["description"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert!(
+        command_entry("nb.add").contains("DocumentKind::Note")
+            && command_entry("nb.add").contains("`todo`"),
+        "nb commands nb.add entry should name the Note kind and point at todo"
+    );
+    assert!(
+        command_entry("nb.todo").contains("DocumentKind::Todo")
+            && command_entry("nb.todo").contains("`add`"),
+        "nb commands nb.todo entry should name the Todo kind and contrast with add"
+    );
+}

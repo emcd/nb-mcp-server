@@ -437,13 +437,13 @@ dependencies = [
 
 [[package]]
 name = "nb-api"
-version = "0.3.1"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f53db6cf5c595ad332cc1600c46ac7e2e9cacf9253e0a6b4aa3f4e988f5bd7c"
+checksum = "a67d18002fed97da1e6ad26c8551e64c5423319b778a0399a79c37a38f228b7f"
 dependencies = [
  "anyhow",
- "base64",
  "blake3",
+ "libc",
  "regex",
  "schemars",
  "serde",
@@ -459,7 +459,6 @@ name = "nb-mcp-server"
 version = "0.14.0"
 dependencies = [
  "anyhow",
- "base64",
  "nb-api",
  "regex",
  "rmcp",

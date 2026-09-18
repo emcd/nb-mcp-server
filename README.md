@@ -209,22 +209,31 @@ surface enabled:
   match count; an optional fingerprint guards against stale edits.
 - `edit_note_lines` — apply a batch of disjoint insert/delete/replace
   `edits` verified against line anchors from one original snapshot;
-  `content` is plain UTF-8 text.
+  `content` is bare text (no terminator bytes; the library appends the
+  document EOL, so single-line replaces never merge the next line).
 - `retitle_note` — change the title without changing the path.
 - `edit_note_tags` — add and/or remove tags in one atomic operation.
 
 These tools address notes by a flat `id` (alias `selector`) string exactly
-like `show`/`delete`/`move`; the `NoteTarget` `path` variant and
-notebook-relative filenames are not exposed, and qualified selectors
-returned by `show`/`show_note_lines`/`search_note_lines` round-trip
-directly as `id`. Body content (`pattern`, `replacement`, `title`,
-`new_body`, line-edit `content`) and line/search `text`/`title` are plain
-UTF-8 strings; there is no base64 on this change's textual read/edit MCP
-tool surface (`new_body` has no `new_body_base64` opt-in; a future
-raw-bytes MCP tool is explicitly outside this guarantee). Line-level reads
-are available through `show_note_lines` (bounded, anchored windows) and
-`search_note_lines` (anchored matches), which support search-to-edit
-without reading the whole note.
+like `show`/`delete`/`move`; notebook-relative filenames are not exposed,
+and qualified selectors returned by `show`/`show_note_lines`/
+`search_note_lines` round-trip directly as `id`. Since `nb-api 0.4`,
+numeric `.index` ids are surfaced too: reads and mutation outcomes carry
+`selector` plus `numeric_id`, and `<folder>/<id>` / `<id>` are accepted as
+`id` (ids are folder-local, positional, and never reused; path stays
+canonical). Body content (`pattern`, `replacement`, `title`,
+`new_body`, line-edit `content`) and line/search `text`/`title` are native
+UTF-8 strings with no base64 anywhere on the wire. Line-level reads
+are available through `show_note_lines` (bounded, anchored windows with a
+document-level `eol` declaration — `lf`/`crlf` plus `has_final_eol` —
+instead of per-line terminators) and `search_note_lines` (anchored
+matches, no EOL fields by design), which support search-to-edit
+without reading the whole note. New notes get nb-faithful filenames
+mangled from the title (`Hello World Title` → `hello_world_title.md`).
+
+`add` creates notes only: todo-shaped content (checkbox lines or a
+`Tasks` heading outside fenced code blocks) is rejected with a hint to
+use the `todo` tool instead.
 
 Invoking multiplexed `nb.edit` is rejected with recovery guidance naming
 the replacement tools. The body-aware and line tools are direct-only:
@@ -233,24 +242,25 @@ invoking them through the multiplexed `nb` tool is rejected.
 ## Structured Results
 
 - `show` returns a text-first slim structured envelope: `selector`, `path`,
-   `kind`, `todo_state`, `title` (`Option<String>`), `tags`, `body`
-   (full decoded UTF-8 text), `body_contiguous`, and `fingerprint`. No
-   base64 field is exposed on this change's textual read/edit MCP tool
-   surface. When the source is not valid UTF-8 or the target is
-   non-textual, `show` returns a typed error carrying the detected content
-   type plus guidance to an external raw-retrieval facility outside MCP
-   (the `nb` CLI); it never returns base64 bytes.
+   `kind`, `todo_state`, `title` (normalized `Option<String>`), `tags`, `body`
+   (full UTF-8 text), `body_contiguous`, `fingerprint`, and `numeric_id`.
+   No base64 field is exposed. When the source is not valid UTF-8, `show`
+   returns a typed `NonUtf8` error carrying the MIME hint plus guidance to
+   an external raw-retrieval facility outside MCP (the `nb` CLI); a
+   non-textual target returns `UnsupportedShowTarget`. Neither ever
+   returns base64 bytes.
 - Mutating tools (`add`, `todo`, `bookmark`, `mkdir`, `delete`, `move`,
   `do`, `undo`, and the body-aware tools) return a structured
   `CommitOutcome`: `commit_created`, `revision_id`, `pre_revision`, and
-  per-operation `path`/`selector`/`noop`/`fingerprint`. Idempotent no-op
+  per-operation `path`/`selector`/`numeric_id`/`noop`/`fingerprint`. Idempotent no-op
   mutations report `commit_created: false`.
 
 ## Typed Error Surfaces
 
-`nb-api 0.3` introduces typed failures that the MCP layer translates into
+`nb-api 0.4` introduces typed failures that the MCP layer translates into
 actionable diagnostics on both the multiplexed `nb.*` surface and the
-first-class tool surface:
+first-class tool surface. `NonUtf8` and `IndexLockTimeout` (busy `.index`
+lock; retry later, nothing mutated) join the existing set:
 
 - `show` on a non-text selector (folder, archive, image, ...): the
   error names the selector and the actual non-text type, states
@@ -338,7 +348,7 @@ signing prompts do not block MCP tool calls.
 
 ## Related Projects
 
-- [nb-api](https://github.com/emcd/nb-api) — Typed Rust interface to the `nb` CLI. Published on [crates.io](https://crates.io/crates/nb-api). This MCP server depends on `nb-api` for all note-taking primitives; the body-aware editing surface, typed errors, structured results, and sanitized empty listings all come from `nb-api 0.3`.
+- [nb-api](https://github.com/emcd/nb-api) — Typed Rust interface to the `nb` CLI. Published on [crates.io](https://crates.io/crates/nb-api). This MCP server depends on `nb-api` for all note-taking primitives; the body-aware editing surface, typed errors, structured results, and sanitized empty listings all come from `nb-api 0.4`.
 
 ## Contributing
 
