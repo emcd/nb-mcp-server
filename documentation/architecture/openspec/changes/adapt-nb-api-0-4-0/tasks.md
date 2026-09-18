@@ -24,5 +24,5 @@
 
 ## 5. Review readiness
 
-- [ ] 5.1 `openspec validate adapt-nb-api-0-4-0 --strict` passes
-- [ ] 5.2 Request Reviewer General implementation review + operator approval (no version bump/tag until approved)
+- [x] 5.1 `openspec validate adapt-nb-api-0-4-0 --strict` passes
+- [x] 5.2 Request Reviewer General implementation review + operator approval (no version bump/tag until approved)
