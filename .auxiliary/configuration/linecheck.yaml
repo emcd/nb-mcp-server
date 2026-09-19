@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/tupe12334/linecheck/main/schema/linecheck.schema.json
+
+# Scope: Rust sources only. Unmatched files fall back to linecheck's
+# built-in 200/400 defaults, so everything outside src/tests is excluded:
+# - target/**: build artifacts (also mirrors stale packaged sources)
+# - Cargo.lock: generated dependency snapshot
+# - documentation/**: durable Nbspec specs/designs/decisions, sized by content
+# - .auxiliary/temporary/**: ephemeral scratch (git-ignored)
+
+rules:
+  - pattern: "src/**/*.rs"
+    warn: 800
+    warn_message: "Approaching lines limit; please consider separating concerns."
+    error: 1000
+    error_message: "Exceeds lines limit; please separate concerns."
+
+  - pattern: "tests/**/*.rs"
+    warn: 800
+    warn_message: "Approaching lines limit; please consider separating concerns."
+    error: 1000
+    error_message: "Exceeds lines limit; please separate concerns."
+
+exclude:
+  - "target/**"
+  - "Cargo.lock"
+  - "documentation/**"
+  - ".auxiliary/temporary/**"
+  - "scripts/**"
+  - "README.md"
+  - "LICENSE*"

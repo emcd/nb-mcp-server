@@ -34,6 +34,15 @@ repos:
 - repo: local
   hooks:
 
+    - id: linecheck
+      name: 'Check: Line Counts'
+      language: system
+      entry: 'linecheck --config .auxiliary/configuration/linecheck.yaml'
+      types: [ rust ]
+      require_serial: true
+      stages: [ 'pre-commit' ]
+      fail_fast: true
+
     - id: cargo-fmt
       name: 'Check Style (Rust)'
       language: system
