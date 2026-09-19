@@ -1,4 +1,4 @@
 mod cli;
 mod mcp_stdio;
-mod real_nb_typed_errors;
+mod real_nb;
 mod startup_signing;
