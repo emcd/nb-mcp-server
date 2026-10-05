@@ -73,7 +73,7 @@
     "nb": {
       "type": "local",
       "command": [
-        "reloaderoo", "--",
+        
         "cargo", "run", "--release", "--",
         "--notebook", "nb-mcp-server",
         "--no-commit-signing"

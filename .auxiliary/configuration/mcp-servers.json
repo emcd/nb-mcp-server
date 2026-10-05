@@ -3,18 +3,20 @@
     "agentmux": {
       "command": "agentmux",
       "args": [
-        "host", "mcp"
+        "host",
+        "mcp"
       ]
     },
     "context7": {
       "command": "npx",
-      "args": [ "-y", "@upstash/context7-mcp" ]
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
     },
     "nb": {
-      "command": "reloaderoo",
+      "command": "cargo",
       "args": [
-        "--",
-        "cargo",
         "run",
         "--release",
         "--",
