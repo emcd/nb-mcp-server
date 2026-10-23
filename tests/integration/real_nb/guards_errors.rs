@@ -6,7 +6,8 @@ use super::harness::*;
 fn retitle_note_changes_title_without_path() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
-    let add_response = add_note_via_mcp(&mut server, &env, "Old Title", "Body.\n");
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Old Title", "Body.\n");
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
@@ -40,8 +41,12 @@ fn retitle_note_changes_title_without_path() {
 fn edit_note_tags_adds_and_removes_atomically() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
-    let add_response =
-        add_note_via_mcp(&mut server, &env, "Tagged Note", "Body with a #kept tag.\n");
+    let add_response = add_note_via_mcp(
+        &mut server,
+        &env,
+        "Tagged Note",
+        "Body with a #kept tag.\n",
+    );
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
@@ -89,7 +94,8 @@ fn edit_subcommand_rejection_is_parity_across_surfaces() {
     let direct = server.call_first_class("edit", payload.clone());
     let multiplexed = server.call_multiplexed("nb.edit", payload);
     assert!(
-        direct["result"]["isError"].as_bool() == Some(true) || direct["error"].is_object(),
+        direct["result"]["isError"].as_bool() == Some(true)
+            || direct["error"].is_object(),
         "direct edit should be rejected; got: {direct}"
     );
     assert_eq!(
@@ -181,7 +187,9 @@ fn add_rejects_todo_shaped_content() {
     });
     let direct = server.call_first_class("add", payload.clone());
     let multiplexed = server.call_multiplexed("nb.add", payload);
-    for (label, response) in [("direct", &direct), ("multiplexed", &multiplexed)] {
+    for (label, response) in
+        [("direct", &direct), ("multiplexed", &multiplexed)]
+    {
         assert_eq!(
             response["result"]["isError"].as_bool(),
             Some(true),

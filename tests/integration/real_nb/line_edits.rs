@@ -6,7 +6,8 @@ use super::harness::*;
 fn replace_note_body_requires_fresh_fingerprint() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
-    let add_response = add_note_via_mcp(&mut server, &env, "Replace Me", "Original body.\n");
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Replace Me", "Original body.\n");
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
@@ -35,7 +36,8 @@ fn replace_note_body_requires_fresh_fingerprint() {
     );
 
     // Stale fingerprint: replace is rejected with mismatch guidance.
-    let stale = "b3:0000000000000000000000000000000000000000000000000000000000000000";
+    let stale =
+        "b3:0000000000000000000000000000000000000000000000000000000000000000";
     let rejected = server.call_first_class(
         "replace_note_body",
         json!({
@@ -65,7 +67,12 @@ fn replace_note_body_requires_fresh_fingerprint() {
 fn edit_note_substring_replaces_occurrences_and_rejects_mismatches() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
-    let add_response = add_note_via_mcp(&mut server, &env, "Substring Note", "foo bar foo baz\n");
+    let add_response = add_note_via_mcp(
+        &mut server,
+        &env,
+        "Substring Note",
+        "foo bar foo baz\n",
+    );
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
@@ -398,7 +405,8 @@ fn edit_note_lines_dollar_insert_terminates_final_line() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
     // Unterminated final line: eol declared, has_final_eol false.
-    let add_response = add_note_via_mcp(&mut server, &env, "Dollar Note", "one\ntwo");
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Dollar Note", "one\ntwo");
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 

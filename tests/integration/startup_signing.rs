@@ -65,7 +65,10 @@ fn show_paths_with_no_commit_signing_initializes_notebook_without_signing() {
 
     let notebook_path = shim.root.join("notebooks").join(TEST_NOTEBOOK);
     assert!(notebook_path.is_dir());
-    assert!(stdout.contains(&format!("notebook_path: {}", notebook_path.display())));
+    assert!(
+        stdout
+            .contains(&format!("notebook_path: {}", notebook_path.display()))
+    );
     assert!(shim.root.join("signing-overrides-detected").is_file());
 
     let calls = fs::read_to_string(shim.root.join("calls.log")).unwrap();

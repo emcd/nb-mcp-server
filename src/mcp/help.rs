@@ -14,7 +14,9 @@ const ADD_TOOL_DESCRIPTION: &str = "Create a new note (DocumentKind::Note). Do N
 /// registration literally. Keep the two in sync (see above).
 const TODO_TOOL_DESCRIPTION: &str = "Create a todo item (DocumentKind::Todo) with checkbox state and optional checklist tasks. Use this — not `add` — for anything with checkboxes or a Tasks section. The folder field is required by default; title is required; optional description/content and tasks[] create checklist items.";
 
-pub(crate) fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> {
+pub(crate) fn help_tool(
+    params: HelpParams,
+) -> Result<CallToolResult, McpError> {
     let query = params.query.trim();
 
     let response = match query {
@@ -94,7 +96,11 @@ pub(crate) fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> 
             "Show notebook status",
             json_schema_for::<StatusArgs>(),
         ),
-        "nb.add" => command_help("nb.add", ADD_TOOL_DESCRIPTION, json_schema_for::<AddArgs>()),
+        "nb.add" => command_help(
+            "nb.add",
+            ADD_TOOL_DESCRIPTION,
+            json_schema_for::<AddArgs>(),
+        ),
         "nb.show" => command_help(
             "nb.show",
             "Read a note's content as a text-first structured envelope (selector, path, kind, todo_state, title, tags, body, body_contiguous, fingerprint)",
@@ -176,13 +182,21 @@ pub(crate) fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> 
             "List available notebooks (list-only; notebook creation/deletion is not exposed via MCP).",
             serde_json::json!({"type": "object", "properties": {}}),
         ),
-        "add" => first_class_help("add", ADD_TOOL_DESCRIPTION, json_schema_for::<AddArgs>()),
+        "add" => first_class_help(
+            "add",
+            ADD_TOOL_DESCRIPTION,
+            json_schema_for::<AddArgs>(),
+        ),
         "show" => first_class_help(
             "show",
             "Read a note's content as a text-first structured envelope (selector, path, kind, todo_state, title, tags, body, body_contiguous, fingerprint).",
             json_schema_for::<ShowArgs>(),
         ),
-        "delete" => first_class_help("delete", "Delete a note.", json_schema_for::<DeleteArgs>()),
+        "delete" => first_class_help(
+            "delete",
+            "Delete a note.",
+            json_schema_for::<DeleteArgs>(),
+        ),
         "move" => first_class_help(
             "move",
             "Move or rename a note.",
@@ -198,7 +212,11 @@ pub(crate) fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> 
             "Full-text search notes (queries[] required; mode: any default OR, mode: all for AND).",
             json_schema_for::<SearchArgs>(),
         ),
-        "todo" => first_class_help("todo", TODO_TOOL_DESCRIPTION, json_schema_for::<TodoArgs>()),
+        "todo" => first_class_help(
+            "todo",
+            TODO_TOOL_DESCRIPTION,
+            json_schema_for::<TodoArgs>(),
+        ),
         "do" => first_class_help(
             "do",
             "Mark a todo as complete (optional task_number).",
@@ -224,7 +242,11 @@ pub(crate) fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> 
             "List folders in notebook.",
             json_schema_for::<FoldersArgs>(),
         ),
-        "mkdir" => first_class_help("mkdir", "Create a folder.", json_schema_for::<MkdirArgs>()),
+        "mkdir" => first_class_help(
+            "mkdir",
+            "Create a folder.",
+            json_schema_for::<MkdirArgs>(),
+        ),
         "import" => first_class_help(
             "import",
             "Import a file or URL into notebook. The folder field is required by default.",
@@ -270,13 +292,17 @@ pub(crate) fn help_tool(params: HelpParams) -> Result<CallToolResult, McpError> 
                 "unknown query; try 'nb' for command list",
                 Some(serde_json::json!({"query": query})),
             ));
-        }
+        },
     };
 
     Ok(CallToolResult::success(vec![Content::json(response)?]))
 }
 
-fn command_help(command: &str, description: &str, schema: serde_json::Value) -> serde_json::Value {
+fn command_help(
+    command: &str,
+    description: &str,
+    schema: serde_json::Value,
+) -> serde_json::Value {
     serde_json::json!({
         "command": command,
         "description": description,
@@ -288,7 +314,11 @@ fn command_help(command: &str, description: &str, schema: serde_json::Value) -> 
     })
 }
 
-fn first_class_help(tool: &str, description: &str, schema: serde_json::Value) -> serde_json::Value {
+fn first_class_help(
+    tool: &str,
+    description: &str,
+    schema: serde_json::Value,
+) -> serde_json::Value {
     serde_json::json!({
         "tool": tool,
         "description": description,
@@ -301,5 +331,6 @@ fn first_class_help(tool: &str, description: &str, schema: serde_json::Value) ->
 }
 
 fn json_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
-    serde_json::to_value(schemars::schema_for!(T)).unwrap_or(serde_json::Value::Null)
+    serde_json::to_value(schemars::schema_for!(T))
+        .unwrap_or(serde_json::Value::Null)
 }

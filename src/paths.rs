@@ -30,7 +30,7 @@ fn compute_log_path() -> PathBuf {
             } else {
                 format!("{}--{}.log", project, worktree)
             }
-        }
+        },
         None => "nb-mcp.log".to_string(),
     };
 
@@ -62,12 +62,13 @@ fn detect_git_info() -> Option<(String, String)> {
     let git_common_dir = git_common_dir.canonicalize().ok()?;
 
     // Master root is parent of git_common_dir when it ends with .git
-    let master_root = if git_common_dir.file_name().is_some_and(|n| n == ".git") {
-        git_common_dir.parent()?.to_path_buf()
-    } else {
-        // Bare repo or unusual structure - fall back to current
-        current_root.clone()
-    };
+    let master_root =
+        if git_common_dir.file_name().is_some_and(|n| n == ".git") {
+            git_common_dir.parent()?.to_path_buf()
+        } else {
+            // Bare repo or unusual structure - fall back to current
+            current_root.clone()
+        };
 
     // Extract directory names
     let project_name = master_root

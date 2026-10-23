@@ -64,13 +64,15 @@ pub(crate) fn todo_shaped_content(content: &str) -> bool {
             match &fence {
                 None => {
                     fence = Some(OpenFence { marker, len });
-                }
+                },
                 Some(open)
-                    if open.marker == marker && len >= open.len && info.trim().is_empty() =>
+                    if open.marker == marker
+                        && len >= open.len
+                        && info.trim().is_empty() =>
                 {
                     fence = None;
-                }
-                _ => {}
+                },
+                _ => {},
             }
             continue;
         }
@@ -116,23 +118,33 @@ pub(crate) fn todo_shaped_add_rejection() -> CallToolResult {
 pub(crate) fn text_result(result: Result<String, NbError>) -> CallToolResult {
     match result {
         Ok(output) => CallToolResult::success(vec![Content::text(output)]),
-        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        Err(err) => {
+            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+        },
     }
 }
 
 /// Present a `Result<CommitOutcome, NbError>` as a structured JSON tool result.
-pub(crate) fn outcome_result(result: Result<CommitOutcome, NbError>) -> CallToolResult {
+pub(crate) fn outcome_result(
+    result: Result<CommitOutcome, NbError>,
+) -> CallToolResult {
     match result {
         Ok(outcome) => json_success(&outcome),
-        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        Err(err) => {
+            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+        },
     }
 }
 
 /// Present a `Result<ShowNote, NbError>` as the structured envelope.
-pub(crate) fn show_result(result: Result<ShowNote, NbError>) -> CallToolResult {
+pub(crate) fn show_result(
+    result: Result<ShowNote, NbError>,
+) -> CallToolResult {
     match result {
         Ok(shown) => json_success(&ShowEnvelope::from_show(shown)),
-        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        Err(err) => {
+            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+        },
     }
 }
 
@@ -141,7 +153,9 @@ pub(crate) fn show_result(result: Result<ShowNote, NbError>) -> CallToolResult {
 fn typed_result<T: Serialize>(result: Result<T, NbError>) -> CallToolResult {
     match result {
         Ok(value) => json_success(&value),
-        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        Err(err) => {
+            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+        },
     }
 }
 
@@ -152,10 +166,11 @@ pub(crate) fn nb_error_result(err: NbError) -> CallToolResult {
 
 pub(crate) fn json_success(value: &impl Serialize) -> CallToolResult {
     match serde_json::to_value(value) {
-        Ok(json) => CallToolResult::success(vec![
-            Content::json(json)
-                .unwrap_or_else(|_| Content::text("failed to serialize result".to_string())),
-        ]),
+        Ok(json) => {
+            CallToolResult::success(vec![Content::json(json).unwrap_or_else(
+                |_| Content::text("failed to serialize result".to_string()),
+            )])
+        },
         Err(_) => CallToolResult::success(vec![Content::text(
             "failed to serialize result".to_string(),
         )]),
@@ -219,7 +234,7 @@ pub(crate) fn present_nb_error(err: &NbError) -> String {
             "Substring edit rejected: the pattern must be non-empty.\n\
              Hint: provide a non-empty pattern."
                 .to_string()
-        }
+        },
         NbError::FragmentedBody {
             fragment_count,
             guidance,
@@ -279,10 +294,12 @@ pub(crate) fn present_nb_error(err: &NbError) -> String {
             kind,
             message,
             plan_index,
-        } => format!("Plan validation ({kind}) failed at op {plan_index:?}: {message}"),
+        } => format!(
+            "Plan validation ({kind}) failed at op {plan_index:?}: {message}"
+        ),
         NbError::UnsupportedStructure { reason } => {
             format!("Unsupported notebook structure: {reason}")
-        }
+        },
         NbError::NonUtf8 {
             selector,
             path,
