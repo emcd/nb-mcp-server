@@ -1,10 +1,14 @@
 use anyhow::Result;
 use nb_mcp_server::{Config, mcp, paths};
-use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+    EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
 fn parse_args() -> Config {
     let mut config = Config {
-        allow_top_level_notes: env_flag_enabled("NB_MCP_ALLOW_TOP_LEVEL_NOTES"),
+        allow_top_level_notes: env_flag_enabled(
+            "NB_MCP_ALLOW_TOP_LEVEL_NOTES",
+        ),
         ..Default::default()
     };
     let mut args = std::env::args().skip(1);
@@ -13,43 +17,53 @@ fn parse_args() -> Config {
         match arg.as_str() {
             "--notebook" | "-n" => {
                 config.notebook = args.next();
-            }
+            },
             "--no-commit-signing" => {
                 config.commit_signing_disabled = true;
-            }
+            },
             "--no-create-notebook" => {
                 config.create_notebook = false;
-            }
+            },
             "--allow-top-level-notes" => {
                 config.allow_top_level_notes = true;
-            }
+            },
             "--show-paths" => {
                 config.show_paths = true;
-            }
+            },
             "--version" => {
                 println!("nb-mcp {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
-            }
+            },
             "--help" | "-h" => {
                 eprintln!("nb-mcp: MCP server for nb note-taking");
                 eprintln!();
                 eprintln!("Usage: nb-mcp [OPTIONS]");
                 eprintln!();
                 eprintln!("Options:");
-                eprintln!("  -n, --notebook <NAME>  Default notebook (overrides NB_MCP_NOTEBOOK)");
-                eprintln!("      --no-commit-signing  Disable commit and tag signing");
+                eprintln!(
+                    "  -n, --notebook <NAME>  Default notebook (overrides NB_MCP_NOTEBOOK)"
+                );
+                eprintln!(
+                    "      --no-commit-signing  Disable commit and tag signing"
+                );
                 eprintln!("                            in notebook repo");
-                eprintln!("      --no-create-notebook  Disable automatic notebook creation");
+                eprintln!(
+                    "      --no-create-notebook  Disable automatic notebook creation"
+                );
                 eprintln!("      --allow-top-level-notes");
-                eprintln!("                            Allow new notes at notebook root");
-                eprintln!("      --show-paths       Show notebook path and state directory");
+                eprintln!(
+                    "                            Allow new notes at notebook root"
+                );
+                eprintln!(
+                    "      --show-paths       Show notebook path and state directory"
+                );
                 eprintln!("      --version          Show version");
                 eprintln!("  -h, --help             Show this help");
                 std::process::exit(0);
-            }
+            },
             _ => {
                 // Ignore unknown args for forward compatibility
-            }
+            },
         }
     }
 
@@ -57,15 +71,16 @@ fn parse_args() -> Config {
 }
 
 fn env_flag_enabled(name: &str) -> bool {
-    std::env::var(name)
-        .ok()
-        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+    std::env::var(name).ok().is_some_and(|value| {
+        matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    })
 }
 
 async fn show_paths(config: &Config) -> Result<()> {
     let nb_config = config.to_nb_api_config();
     let nb = nb_api::NbClient::new(&nb_config)?;
-    let notebook_path = nb.show_notebook_path(nb_config.notebook.as_deref()).await?;
+    let notebook_path =
+        nb.show_notebook_path(nb_config.notebook.as_deref()).await?;
     let log_path = paths::get_log_path();
     let state_dir = log_path.parent().unwrap_or(log_path.as_path());
     println!("notebook_path: {}", notebook_path.display());
@@ -78,7 +93,8 @@ async fn show_paths(config: &Config) -> Result<()> {
 /// - Stderr: For immediate feedback during development
 /// - File: For persistent logs in `~/.local/state/nb-mcp/{project}--{worktree}.log`
 fn setup_logging() {
-    let env_filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
+    let env_filter = EnvFilter::from_default_env()
+        .add_directive(tracing::Level::INFO.into());
 
     // Stderr layer (compact, for console)
     let stderr_layer = fmt::layer().with_writer(std::io::stderr).compact();
@@ -89,7 +105,7 @@ fn setup_logging() {
             // Keep the guard alive by leaking it (file logger lives for process lifetime)
             std::mem::forget(guard);
             Some(fmt::layer().with_writer(writer).with_ansi(false))
-        }
+        },
         None => None,
     };
 
@@ -115,7 +131,8 @@ fn setup_file_logging() -> Option<(
     paths::ensure_dir(log_dir).ok()?;
 
     // Create a non-blocking file appender
-    let file_appender = tracing_appender::rolling::never(log_dir, log_filename);
+    let file_appender =
+        tracing_appender::rolling::never(log_dir, log_filename);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     Some((non_blocking, guard))

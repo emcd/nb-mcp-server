@@ -68,7 +68,8 @@ impl RealNbServer {
             "method": method,
             "params": params,
         });
-        writeln!(self.stdin, "{}", serde_json::to_string(&message).unwrap()).unwrap();
+        writeln!(self.stdin, "{}", serde_json::to_string(&message).unwrap())
+            .unwrap();
         self.stdin.flush().unwrap();
         loop {
             let mut line = String::new();
@@ -87,15 +88,24 @@ impl RealNbServer {
             "method": method,
             "params": params,
         });
-        writeln!(self.stdin, "{}", serde_json::to_string(&message).unwrap()).unwrap();
+        writeln!(self.stdin, "{}", serde_json::to_string(&message).unwrap())
+            .unwrap();
         self.stdin.flush().unwrap();
     }
 
-    pub(crate) fn call_first_class(&mut self, tool: &str, args: Value) -> Value {
+    pub(crate) fn call_first_class(
+        &mut self,
+        tool: &str,
+        args: Value,
+    ) -> Value {
         self.request("tools/call", json!({"name": tool, "arguments": args}))
     }
 
-    pub(crate) fn call_multiplexed(&mut self, command: &str, args: Value) -> Value {
+    pub(crate) fn call_multiplexed(
+        &mut self,
+        command: &str,
+        args: Value,
+    ) -> Value {
         self.request(
             "tools/call",
             json!({
@@ -216,7 +226,11 @@ pub(crate) fn add_note_via_mcp(
 
 /// Commit one new file in the fixture notebook so the worktree returns
 /// clean (the native Transaction engine refuses a dirty baseline).
-pub(crate) fn commit_file(env: &NbTestEnv, notebook_root: &std::path::Path, rel_path: &str) {
+pub(crate) fn commit_file(
+    env: &NbTestEnv,
+    notebook_root: &std::path::Path,
+    rel_path: &str,
+) {
     let mut git = Command::new("git");
     env.configure_std(&mut git);
     git.current_dir(notebook_root);

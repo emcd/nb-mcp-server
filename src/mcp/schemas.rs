@@ -35,7 +35,9 @@ where
 {
     deserialize_plain_string_with_field(d, "pattern")
 }
-fn deserialize_plain_string_replacement<'de, D>(d: D) -> Result<String, D::Error>
+fn deserialize_plain_string_replacement<'de, D>(
+    d: D,
+) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -59,7 +61,9 @@ where
 {
     deserialize_plain_string_with_field(d, "content")
 }
-fn deserialize_plain_string_search_pattern<'de, D>(d: D) -> Result<String, D::Error>
+fn deserialize_plain_string_search_pattern<'de, D>(
+    d: D,
+) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -72,7 +76,9 @@ pub(crate) struct NbCall {
     /// Subcommand to execute (e.g., "status", "add", "list").
     pub(crate) command: String,
     /// Arguments for the subcommand as a JSON object.
-    #[schemars(with = "std::collections::BTreeMap<String, serde_json::Value>")]
+    #[schemars(
+        with = "std::collections::BTreeMap<String, serde_json::Value>"
+    )]
     #[serde(default)]
     pub(crate) args: serde_json::Value,
 }

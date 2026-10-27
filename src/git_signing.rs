@@ -5,10 +5,12 @@ use tokio::process::Command;
 
 use crate::Config;
 
-pub async fn disable_commit_signing(config: &Config) -> Result<Option<PathBuf>> {
+pub async fn disable_commit_signing(
+    config: &Config,
+) -> Result<Option<PathBuf>> {
     let nb_config = config.to_nb_api_config();
-    let nb_client =
-        nb_api::NbClient::new(&nb_config).context("create nb client for commit signing update")?;
+    let nb_client = nb_api::NbClient::new(&nb_config)
+        .context("create nb client for commit signing update")?;
     let path = nb_client
         .show_notebook_path(nb_config.notebook.as_deref())
         .await
@@ -92,7 +94,9 @@ async fn run_git_config(path: &Path, key: &str, value: &str) -> Result<()> {
         .arg(value)
         .output()
         .await
-        .with_context(|| format!("run git config {key} for notebook repository"))?;
+        .with_context(|| {
+            format!("run git config {key} for notebook repository")
+        })?;
     if output.status.success() {
         return Ok(());
     }

@@ -7,16 +7,20 @@ fn direct_show_on_folder_selector_returns_actionable_typed_error() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
 
-    let mkdir_response =
-        server.call_first_class("mkdir", json!({"path": FOLDER, "notebook": env.notebook()}));
+    let mkdir_response = server.call_first_class(
+        "mkdir",
+        json!({"path": FOLDER, "notebook": env.notebook()}),
+    );
     assert_eq!(
         mkdir_response["result"]["isError"].as_bool(),
         Some(false),
         "mkdir should succeed against a fresh fixture; got: {mkdir_response}"
     );
 
-    let response =
-        server.call_first_class("show", json!({"id": FOLDER, "notebook": env.notebook()}));
+    let response = server.call_first_class(
+        "show",
+        json!({"id": FOLDER, "notebook": env.notebook()}),
+    );
     assert_typed_show_error(&response, "direct");
 }
 
@@ -25,16 +29,20 @@ fn multiplexed_show_on_folder_selector_returns_actionable_typed_error() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
 
-    let mkdir_response =
-        server.call_first_class("mkdir", json!({"path": FOLDER, "notebook": env.notebook()}));
+    let mkdir_response = server.call_first_class(
+        "mkdir",
+        json!({"path": FOLDER, "notebook": env.notebook()}),
+    );
     assert_eq!(
         mkdir_response["result"]["isError"].as_bool(),
         Some(false),
         "mkdir should succeed; got: {mkdir_response}"
     );
 
-    let response =
-        server.call_multiplexed("nb.show", json!({"id": FOLDER, "notebook": env.notebook()}));
+    let response = server.call_multiplexed(
+        "nb.show",
+        json!({"id": FOLDER, "notebook": env.notebook()}),
+    );
     assert_typed_show_error(&response, "multiplexed");
 }
 
@@ -43,8 +51,10 @@ fn show_folder_typed_error_is_parity_across_surfaces() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
 
-    let mkdir_response =
-        server.call_first_class("mkdir", json!({"path": FOLDER, "notebook": env.notebook()}));
+    let mkdir_response = server.call_first_class(
+        "mkdir",
+        json!({"path": FOLDER, "notebook": env.notebook()}),
+    );
     assert_eq!(
         mkdir_response["result"]["isError"].as_bool(),
         Some(false),
@@ -89,7 +99,8 @@ fn add_duplicate_h1_typed_error_is_parity_across_surfaces() {
 fn mutation_returns_structured_commit_outcome() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
-    let response = add_note_via_mcp(&mut server, &env, "Outcome Note", "Body text.\n");
+    let response =
+        add_note_via_mcp(&mut server, &env, "Outcome Note", "Body text.\n");
     let outcome = RealNbServer::result_json(&response);
     assert_eq!(
         outcome["commit_created"].as_bool(),
@@ -136,7 +147,8 @@ fn show_returns_structured_envelope_with_byte_exact_source() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
     let note_body = "# Headline\n\nSome body with backticks `code`.\n";
-    let add_response = add_note_via_mcp(&mut server, &env, "Envelope Note", note_body);
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Envelope Note", note_body);
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
@@ -219,7 +231,8 @@ fn show_returns_structured_envelope_with_byte_exact_source() {
 fn non_utf8_body_round_trips_through_show_and_replace() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
-    let add_response = add_note_via_mcp(&mut server, &env, "Binary Note", "text body\n");
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Binary Note", "text body\n");
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
@@ -394,7 +407,8 @@ fn search_note_lines_returns_anchored_hits() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
     let body = "alpha beta\ngamma alpha\n";
-    let add_response = add_note_via_mcp(&mut server, &env, "Search Lines", body);
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Search Lines", body);
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
@@ -463,7 +477,8 @@ fn search_note_lines_returns_anchored_hits() {
 fn numeric_selector_round_trip_resolves_same_note() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
-    let add_response = add_note_via_mcp(&mut server, &env, "Numeric Note", "Body.\n");
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Numeric Note", "Body.\n");
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
     let numeric_id = outcome["ops"][0]["numeric_id"]
@@ -498,8 +513,10 @@ fn numeric_selector_round_trip_resolves_same_note() {
         "numeric-id show should echo numeric_id; got: {by_id_json}"
     );
     // The outcome selector itself round-trips.
-    let by_selector =
-        server.call_first_class("show", json!({"id": selector, "notebook": env.notebook()}));
+    let by_selector = server.call_first_class(
+        "show",
+        json!({"id": selector, "notebook": env.notebook()}),
+    );
     assert_eq!(
         by_selector["result"]["isError"].as_bool(),
         Some(false),
@@ -511,7 +528,8 @@ fn numeric_selector_round_trip_resolves_same_note() {
 fn show_note_lines_title_stays_normalized() {
     let env = fresh_env();
     let mut server = RealNbServer::spawn(&env);
-    let add_response = add_note_via_mcp(&mut server, &env, "Raw H1 Title", "Body.\n");
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Raw H1 Title", "Body.\n");
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 
@@ -546,7 +564,8 @@ fn show_titles_agree_on_leading_hash_title() {
     let mut server = RealNbServer::spawn(&env);
     // Raw H1 line is `# #hashtag`; upstream title_text is `#hashtag`.
     // Both MCP paths must return `#hashtag` (no double-strip on show).
-    let add_response = add_note_via_mcp(&mut server, &env, "#hashtag", "Body text.\n");
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "#hashtag", "Body text.\n");
     let outcome = RealNbServer::result_json(&add_response);
     let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
 

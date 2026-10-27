@@ -4,8 +4,8 @@ use rmcp::model::{CallToolResult, Content};
 use serde::Serialize;
 
 use crate::nb::{
-    DocumentKind, Fingerprint, LineAnchor, LineEdit, LineEol, NbError, SearchNoteLines, ShowNote,
-    ShowNoteLines, TodoState,
+    DocumentKind, Fingerprint, LineAnchor, LineEdit, LineEol, NbError,
+    SearchNoteLines, ShowNote, ShowNoteLines, TodoState,
 };
 
 use super::errors::{json_success, present_nb_error};
@@ -104,13 +104,19 @@ struct HitEnvelope {
     text: String,
 }
 
-pub(crate) fn convert_mcp_line_edits(edits: Vec<McpLineEdit>) -> Vec<LineEdit> {
+pub(crate) fn convert_mcp_line_edits(
+    edits: Vec<McpLineEdit>,
+) -> Vec<LineEdit> {
     edits
         .into_iter()
         .map(|e| match e {
             // Bare-text content; the library appends document `eol` bytes.
-            McpLineEdit::Insert { at, content } => LineEdit::Insert { at, content },
-            McpLineEdit::Delete { start, end } => LineEdit::Delete { start, end },
+            McpLineEdit::Insert { at, content } => {
+                LineEdit::Insert { at, content }
+            },
+            McpLineEdit::Delete { start, end } => {
+                LineEdit::Delete { start, end }
+            },
             McpLineEdit::Replace {
                 start,
                 end,
@@ -124,20 +130,32 @@ pub(crate) fn convert_mcp_line_edits(edits: Vec<McpLineEdit>) -> Vec<LineEdit> {
         .collect()
 }
 
-pub(crate) fn show_note_lines_result(result: Result<ShowNoteLines, NbError>) -> CallToolResult {
+pub(crate) fn show_note_lines_result(
+    result: Result<ShowNoteLines, NbError>,
+) -> CallToolResult {
     match result {
-        Ok(envelope) => json_success(&ShowNoteLinesEnvelope::from_wire(envelope)),
-        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        Ok(envelope) => {
+            json_success(&ShowNoteLinesEnvelope::from_wire(envelope))
+        },
+        Err(err) => {
+            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+        },
     }
 }
 
-pub(crate) fn search_note_lines_result(result: Result<SearchNoteLines, NbError>) -> CallToolResult {
+pub(crate) fn search_note_lines_result(
+    result: Result<SearchNoteLines, NbError>,
+) -> CallToolResult {
     match result {
         Ok(shown) => match SearchNoteLinesEnvelope::from_wire(shown) {
             Ok(envelope) => json_success(&envelope),
-            Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+            Err(err) => CallToolResult::error(vec![Content::text(
+                present_nb_error(&err),
+            )]),
         },
-        Err(err) => CallToolResult::error(vec![Content::text(present_nb_error(&err))]),
+        Err(err) => {
+            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+        },
     }
 }
 

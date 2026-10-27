@@ -1,0 +1,24 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: 0.3.1
+_src_path: gh:emcd/rust-project-common
+authors: ''
+cpu_architectures:
+- x86_64
+- arm64
+crate_name: nb-mcp-server
+crate_shape:
+- library
+description: MCP server wrapping the nb CLI for LLM-friendly note-taking
+enable_benchmarking: false
+enable_fuzzing: false
+enable_property_tests: false
+enable_publication: true
+gh_owner: emcd
+license: Apache-2.0
+operating_systems:
+- linux
+- macos
+- windows
+project_name: nb-mcp-server
+rust_version: '1.98'
+workspace_mode: none

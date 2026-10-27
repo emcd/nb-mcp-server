@@ -29,7 +29,10 @@ impl McpServer {
     #[tool(
         description = r#"nb note-taking tool. Invoke with {"command":"nb.<subcommand>","args":{...}} and pass args as a JSON object (stringified JSON is not accepted). Unknown args are rejected. This is a curated wrapper (not a 1:1 map of nb CLI flags). New note commands require folder by default; use nb.mkdir to create folders and nb.folders to list them. notebook must be a bare notebook name; use folder for folders and id/selector for notes. Note-targeting commands accept id (alias: selector); returned identifiers are nb selectors, not repo filesystem paths. In nb.list output, todo state is [ ] / [x]; leading glyphs like ✔️ are item markers from nb, not completion status. nb.search uses queries[] with optional mode any|all. Commands: status, add, show, delete, move, list, search, todo, do, undo, tasks, bookmark, folders, mkdir, notebooks, import. The legacy edit command is removed; use the direct body-aware tools (replace_note_body, edit_note_substring, edit_note_lines, retitle_note, edit_note_tags) and line tools (show_note_lines, search_note_lines). Use `help` for exact schemas."#
     )]
-    async fn nb(&self, Parameters(call): Parameters<NbCall>) -> Result<CallToolResult, McpError> {
+    async fn nb(
+        &self,
+        Parameters(call): Parameters<NbCall>,
+    ) -> Result<CallToolResult, McpError> {
         self.dispatch_nb(call).await
     }
 
@@ -310,16 +313,18 @@ pub async fn run(config: Config) -> Result<()> {
                     repository = %path.display(),
                     "commit signing disabled for notebook repository"
                 );
-            }
+            },
             Ok(None) => {
-                warn!("commit signing disable requested but notebook repository not found");
-            }
+                warn!(
+                    "commit signing disable requested but notebook repository not found"
+                );
+            },
             Err(err) => {
                 warn!(
                     error = %err,
                     "commit signing disable requested but update failed"
                 );
-            }
+            },
         }
     }
     let server = McpServer::new(&config)?;

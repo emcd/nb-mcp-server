@@ -6,7 +6,8 @@
 //! `NbClient` follow the upstream `nb-api` 0.4 surface.
 
 pub use nb_api::{
-    BodyFragment, BoundaryAt, CommitOutcome, DocumentKind, Fingerprint, LineAnchor, LineEdit,
-    LineEol, LinePosition, LineRef, NbClient, NbError, NoteTarget, Occurrence, SearchMode,
-    SearchNoteLines, ShowNote, ShowNoteLines, TaskStatus, TodoState,
+    BodyFragment, BoundaryAt, CommitOutcome, DocumentKind, Fingerprint,
+    LineAnchor, LineEdit, LineEol, LinePosition, LineRef, NbClient, NbError,
+    NoteTarget, Occurrence, SearchMode, SearchNoteLines, ShowNote,
+    ShowNoteLines, TaskStatus, TodoState,
 };
