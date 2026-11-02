@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Raised the `nb-api` floor to `0.4.2`: `tasks` maps to `nb todos tasks`
+  with real recursive scope enumeration, and empty scopes return an
+  empty-tasks signal instead of an error; tag edits re-serialize the
+  canonical grouped form with no orphan hashtag lines.
+
 ## [0.15.0] - 2026-10-22
 
 ### Changed

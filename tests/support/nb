@@ -209,6 +209,19 @@ if [[ "${1:-}" == "tasks" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "todos" && "${2:-}" == "tasks" ]]; then
+  # todos tasks {notebook}: or todos tasks {notebook}:{folder}/ [open|closed] --no-color
+  # (nb 7.24.0 split; outputs identical to legacy nb tasks)
+  selector="${3:-}"
+  notebook="${selector%%:*}"
+  if [[ ! -d "${root}/notebooks/${notebook}" ]]; then
+    echo "! notebook not found: ${notebook}" >&2
+    exit 1
+  fi
+  echo "tasks ${notebook}"
+  exit 0
+fi
+
 if [[ "${1:-}" == *"bookmark" ]]; then
   # {notebook}:bookmark or {notebook}:{folder}/bookmark
   cmd="${1:-}"

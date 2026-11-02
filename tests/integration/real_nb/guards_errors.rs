@@ -349,3 +349,157 @@ fn add_fence_tracking_follows_commonmark_shape() {
         "invalid backtick-info opener must not hide a checklist; got: {bad_info}"
     );
 }
+
+#[test]
+fn tasks_empty_scope_returns_empty_signal_not_error() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    // nb-api 0.4.2 normalizes nb's empty-tasks exit into an empty signal:
+    // an empty notebook must succeed with a "0 tasks." signal, not fail.
+    for recursive in [true, false] {
+        let response = server.call_first_class(
+            "tasks",
+            json!({"recursive": recursive, "notebook": env.notebook()}),
+        );
+        assert_eq!(
+            response["result"]["isError"].as_bool(),
+            Some(false),
+            "empty tasks (recursive={recursive}) should succeed; got: {response}"
+        );
+        let text = RealNbServer::error_text(&response);
+        assert!(
+            text.contains("0 tasks"),
+            "empty tasks should report the empty signal; got: {text:?}"
+        );
+    }
+    // With a status filter, nb reports which bucket is empty; that rides
+    // through verbatim (minus the `!` error marker).
+    let filtered = server.call_first_class(
+        "tasks",
+        json!({"recursive": true, "status": "open", "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        filtered["result"]["isError"].as_bool(),
+        Some(false),
+        "empty filtered tasks should succeed; got: {filtered}"
+    );
+    assert!(
+        RealNbServer::error_text(&filtered).contains("0 open tasks"),
+        "empty open-tasks should name the bucket; got: {filtered}"
+    );
+}
+
+#[test]
+fn tasks_recursive_selects_scope() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let todo_response = server.call_first_class(
+        "todo",
+        json!({
+            "folder": "deep",
+            "title": "Scoped Todo",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        todo_response["result"]["isError"].as_bool(),
+        Some(false),
+        "todo create should succeed; got: {todo_response}"
+    );
+
+    let flat = server.call_first_class(
+        "tasks",
+        json!({"recursive": false, "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        flat["result"]["isError"].as_bool(),
+        Some(false),
+        "folder-only tasks should succeed; got: {flat}"
+    );
+    assert!(
+        !RealNbServer::error_text(&flat).contains("Scoped Todo"),
+        "folder-only scope must not enumerate subfolder todos; got: {flat}"
+    );
+
+    let recursive = server.call_first_class(
+        "tasks",
+        json!({"recursive": true, "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        recursive["result"]["isError"].as_bool(),
+        Some(false),
+        "recursive tasks should succeed; got: {recursive}"
+    );
+    assert!(
+        RealNbServer::error_text(&recursive).contains("Scoped Todo"),
+        "recursive scope must enumerate subfolder todos; got: {recursive}"
+    );
+}
+
+#[test]
+fn edit_note_tags_shrink_keeps_show_agreement() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Shrink Tags", "Body.\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let tagged = server.call_first_class(
+        "edit_note_tags",
+        json!({
+            "id": format!("{}:{path}", env.notebook()),
+            "add": ["alpha", "beta"],
+            "remove": [],
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        tagged["result"]["isError"].as_bool(),
+        Some(false),
+        "tag add should succeed; got: {tagged}"
+    );
+
+    // Shrink to a single surviving tag: show must agree and no orphan
+    // hashtag lines may remain (nb-api 0.4.2 grouped-section fix).
+    let shrunk = server.call_first_class(
+        "edit_note_tags",
+        json!({
+            "id": format!("{}:{path}", env.notebook()),
+            "add": [],
+            "remove": ["beta"],
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        shrunk["result"]["isError"].as_bool(),
+        Some(false),
+        "tag shrink should succeed; got: {shrunk}"
+    );
+
+    let show = server.call_first_class(
+        "show",
+        json!({"id": format!("{}:{path}", env.notebook()), "notebook": env.notebook()}),
+    );
+    let envelope = RealNbServer::result_json(&show);
+    let tags = envelope["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        tags,
+        vec!["alpha"],
+        "show must report exactly the surviving tag; got: {tags:?}"
+    );
+    let body = envelope["body"].as_str().unwrap();
+    assert!(
+        !body.lines().any(|l| l.starts_with('#')),
+        "no orphan hashtag lines may remain in the body; body: {body:?}"
+    );
+    assert!(
+        !body.contains("beta"),
+        "removed tag must be gone from the body; body: {body:?}"
+    );
+}
