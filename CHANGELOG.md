@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.16.0] - 2026-11-10
 
 ### Changed
 
@@ -163,6 +163,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   operations with explicit notebook routing.
 - Added XDG-compliant logging, ANSI stripping, and prebuilt release binaries.
 
+[0.16.0]: https://github.com/emcd/nb-mcp-server/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/emcd/nb-mcp-server/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/emcd/nb-mcp-server/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/emcd/nb-mcp-server/compare/v0.12.0...v0.13.0
