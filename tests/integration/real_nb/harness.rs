@@ -251,4 +251,16 @@ pub(crate) fn commit_file(
     );
 }
 
+/// Porcelain worktree status of the fixture notebook, for asserting the
+/// tree stays clean across reconciling reads and absorbing commits.
+pub(crate) fn worktree_status(env: &NbTestEnv) -> String {
+    let mut git = Command::new("git");
+    env.configure_std(&mut git);
+    git.current_dir(env.nb_dir().join(env.notebook()));
+    git.args(["status", "--porcelain", "-uall", "--ignored=no"]);
+    let out = git.output().expect("git status");
+    assert!(out.status.success(), "git status failed: {out:?}");
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
 // ---- nb-api 0.4.1 adaptation regressions ----

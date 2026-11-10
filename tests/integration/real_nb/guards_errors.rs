@@ -503,3 +503,186 @@ fn edit_note_tags_shrink_keeps_show_agreement() {
         "removed tag must be gone from the body; body: {body:?}"
     );
 }
+
+#[test]
+fn reconciling_read_then_mutate_succeeds_with_clean_tree() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    // Reviewer wedge sequence: add, then a folder-scoped list through the
+    // multiplexed nb tool (a CLI-backed read that reconciles .index
+    // outside any transaction), then mutate. The absorb guard must let
+    // the mutation through and the tree must end clean.
+    let add_response =
+        add_note_via_mcp(&mut server, &env, "Wedge Note", "Body.\n");
+    let outcome = RealNbServer::result_json(&add_response);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+    assert_eq!(worktree_status(&env), "", "tree should be clean after add");
+
+    let mkdir = server.call_first_class(
+        "mkdir",
+        json!({"path": "sub", "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        mkdir["result"]["isError"].as_bool(),
+        Some(false),
+        "mkdir should succeed; got: {mkdir}"
+    );
+
+    let listed = server.call_multiplexed(
+        "nb.list",
+        json!({"folder": "sub", "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        listed["result"]["isError"].as_bool(),
+        Some(false),
+        "multiplexed list should succeed; got: {listed}"
+    );
+
+    let edited = server.call_first_class(
+        "edit_note_substring",
+        json!({
+            "id": format!("{}:{path}", env.notebook()),
+            "pattern": "Body",
+            "replacement": "Body edited",
+            "occurrence": {"type": "first"},
+            "expected_count": 1,
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        edited["result"]["isError"].as_bool(),
+        Some(false),
+        "mutation after reconciling read must succeed (absorb guard); got: {edited}"
+    );
+    assert_eq!(
+        worktree_status(&env),
+        "",
+        "tree should be clean after the absorbing commit"
+    );
+
+    let added = add_note_via_mcp(&mut server, &env, "After Wedge", "More.\n");
+    assert_eq!(
+        added["result"]["isError"].as_bool(),
+        Some(false),
+        "follow-up add must succeed; got: {added}"
+    );
+    assert_eq!(worktree_status(&env), "", "tree should be clean at the end");
+}
+
+#[test]
+fn delete_folder_refuses_non_empty_without_recursive() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let mkdir = server.call_first_class(
+        "mkdir",
+        json!({"path": "scratch", "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        mkdir["result"]["isError"].as_bool(),
+        Some(false),
+        "mkdir should succeed; got: {mkdir}"
+    );
+    add_note_via_mcp(&mut server, &env, "Scratch Note", "Body.\n");
+
+    // Move the note into the folder so it is non-empty.
+    let outcome = RealNbServer::result_json(&mkdir);
+    let _ = outcome;
+    let moved = server.call_first_class(
+        "move",
+        json!({
+            "id": format!("{}:session-notes/scratch_note.md", env.notebook()),
+            "destination": "scratch/",
+            "notebook": env.notebook(),
+        }),
+    );
+    // Fall back to an add-in-folder if the fixture name differs.
+    if moved["result"]["isError"].as_bool() == Some(true) {
+        let retry = server.call_first_class(
+            "add",
+            json!({
+                "folder": "scratch",
+                "title": "In Folder",
+                "content": "Body.\n",
+                "notebook": env.notebook(),
+            }),
+        );
+        assert_eq!(
+            retry["result"]["isError"].as_bool(),
+            Some(false),
+            "add in folder should succeed; got: {retry}"
+        );
+    }
+
+    let refused = server.call_first_class(
+        "delete",
+        json!({"id": "scratch", "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        refused["result"]["isError"].as_bool(),
+        Some(true),
+        "non-recursive folder delete should be refused; got: {refused}"
+    );
+    assert!(
+        RealNbServer::error_text(&refused).contains("recursive"),
+        "refusal should name the recursive opt-in; got: {refused}"
+    );
+}
+
+#[test]
+fn delete_folder_recursive_removes_directory_and_markers() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    let mkdir = server.call_first_class(
+        "mkdir",
+        json!({"path": "ephemeral", "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        mkdir["result"]["isError"].as_bool(),
+        Some(false),
+        "mkdir should succeed; got: {mkdir}"
+    );
+    let add_response = server.call_first_class(
+        "add",
+        json!({
+            "folder": "ephemeral",
+            "title": "Temp",
+            "content": "Body.\n",
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        add_response["result"]["isError"].as_bool(),
+        Some(false),
+        "add in folder should succeed; got: {add_response}"
+    );
+
+    let deleted = server.call_first_class(
+        "delete",
+        json!({"id": "ephemeral", "recursive": true, "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        deleted["result"]["isError"].as_bool(),
+        Some(false),
+        "recursive folder delete should succeed; got: {deleted}"
+    );
+    assert!(
+        !env.nb_dir().join(env.notebook()).join("ephemeral").exists(),
+        "folder directory must be gone from disk"
+    );
+    assert_eq!(
+        worktree_status(&env),
+        "",
+        "tree should be clean after folder delete"
+    );
+
+    // The folder id must not resurrect with a new numeric id.
+    let again = server.call_first_class(
+        "delete",
+        json!({"id": "ephemeral", "recursive": true, "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        again["result"]["isError"].as_bool(),
+        Some(true),
+        "second delete should be NotFound; got: {again}"
+    );
+}

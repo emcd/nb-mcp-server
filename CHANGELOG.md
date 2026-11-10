@@ -9,10 +9,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
-- Raised the `nb-api` floor to `0.4.2`: `tasks` maps to `nb todos tasks`
+- Raised the `nb-api` floor to `0.4.3`: `tasks` maps to `nb todos tasks`
   with real recursive scope enumeration, and empty scopes return an
   empty-tasks signal instead of an error; tag edits re-serialize the
-  canonical grouped form with no orphan hashtag lines.
+  canonical grouped form with no orphan hashtag lines; folder deletes
+  route to the new `delete_folder` op (recursive-only, no force) with
+  marker cleanup and parent-index blanking; the commit guard absorbs
+  tracked-only `.index` reconciliation instead of refusing, with an
+  index-aware status note.
 
 ## [0.15.0] - 2026-10-22
 

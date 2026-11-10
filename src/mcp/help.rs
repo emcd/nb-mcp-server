@@ -48,7 +48,7 @@ pub(crate) fn help_tool(
                 {"command": "nb.notebooks", "description": "List available notebooks (list-only; no add/delete in MCP)"},
                 {"command": "nb.add", "description": "Create a new note (DocumentKind::Note; not todos — use `todo`)"},
                 {"command": "nb.show", "description": "Read a note's content (structured envelope)"},
-                {"command": "nb.delete", "description": "Delete a note"},
+                {"command": "nb.delete", "description": "Delete a note or folder (recursive deletes folder subtrees)"},
                 {"command": "nb.move", "description": "Move or rename a note"},
                 {"command": "nb.list", "description": "List notes with optional filtering (todo state is [ ] / [x], not leading glyph icons)"},
                 {"command": "nb.search", "description": "Full-text search notes (queries[] + mode any|all)"},
@@ -66,7 +66,7 @@ pub(crate) fn help_tool(
                 {"tool": "notebooks", "description": "List available notebooks"},
                 {"tool": "add", "description": "Create a new note (DocumentKind::Note; not todos — use `todo`)"},
                 {"tool": "show", "description": "Read a note's content (structured envelope)"},
-                {"tool": "delete", "description": "Delete a note"},
+                {"tool": "delete", "description": "Delete a note or folder (recursive deletes folder subtrees)"},
                 {"tool": "move", "description": "Move or rename a note"},
                 {"tool": "list", "description": "List notes with optional filtering"},
                 {"tool": "search", "description": "Full-text search notes (queries[] + mode any|all)"},
@@ -108,7 +108,7 @@ pub(crate) fn help_tool(
         ),
         "nb.delete" => command_help(
             "nb.delete",
-            "Delete a note",
+            "Delete a note or folder by id. Folders refuse when non-empty unless recursive is true, which removes the whole subtree.",
             json_schema_for::<DeleteArgs>(),
         ),
         "nb.move" => command_help(
@@ -194,7 +194,7 @@ pub(crate) fn help_tool(
         ),
         "delete" => first_class_help(
             "delete",
-            "Delete a note.",
+            "Delete a note or folder by id. Folders refuse when non-empty unless recursive is true, which removes the whole subtree.",
             json_schema_for::<DeleteArgs>(),
         ),
         "move" => first_class_help(

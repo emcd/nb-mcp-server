@@ -3,7 +3,7 @@
 use anyhow::Result;
 use rmcp::{ErrorData as McpError, model::CallToolResult};
 
-use crate::nb::NoteTarget;
+use crate::nb::{NbError, NoteTarget};
 
 use super::McpServer;
 use super::envelopes::{
@@ -495,6 +495,30 @@ impl McpServer {
             .nb
             .delete_note(&args.id, args.notebook.as_deref())
             .await;
+        // Upstream routes folder targets to the folder op with a typed
+        // message; the plan layer annotates it with its op index, so match
+        // the inner text rather than the outer variant. Follow it behind
+        // the same tool so `delete` keeps working for both.
+        let is_folder = match &result {
+            Err(NbError::ValidationError { reason, .. }) => {
+                reason.contains("use delete_folder instead of delete_note")
+            },
+            Err(NbError::PlanValidation { message, .. }) => {
+                message.contains("use delete_folder instead of delete_note")
+            },
+            _ => false,
+        };
+        let result = if is_folder {
+            self.nb
+                .delete_folder(
+                    &args.id,
+                    args.recursive,
+                    args.notebook.as_deref(),
+                )
+                .await
+        } else {
+            result
+        };
         Ok(outcome_result(result))
     }
 

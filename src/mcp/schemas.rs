@@ -139,9 +139,13 @@ pub(crate) struct ShowArgs {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DeleteArgs {
-    /// Notebook selector, note ID, filename, or title to delete; not a filesystem path.
+    /// Notebook selector, note ID, filename, title, or folder path to delete; not a filesystem path.
     #[serde(alias = "selector")]
     pub(crate) id: String,
+    /// Delete a folder and its whole subtree. Without it, deleting a
+    /// non-empty folder is refused with its contents listed.
+    #[serde(default)]
+    pub(crate) recursive: bool,
     /// Bare notebook name containing the note (uses default if not specified).
     #[serde(default)]
     #[schemars(with = "String")]

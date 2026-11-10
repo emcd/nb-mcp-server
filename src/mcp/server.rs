@@ -200,7 +200,7 @@ impl McpServer {
 
     #[tool(
         name = "delete",
-        description = "Delete a note. Use id (alias: selector) to identify the note."
+        description = "Delete a note or folder. Use id (alias: selector) to identify the target. Folders delete only when empty unless recursive is true."
     )]
     async fn nb_delete(
         &self,
