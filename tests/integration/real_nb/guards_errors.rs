@@ -686,3 +686,59 @@ fn delete_folder_recursive_removes_directory_and_markers() {
         "second delete should be NotFound; got: {again}"
     );
 }
+
+#[test]
+fn subcommand_named_folder_resolves_cleanly() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    // A folder whose name collides with nb subcommand vocabulary must
+    // resolve through the filesystem fast path, never the nb CLI
+    // dispatch that misroutes it (todos listing, foreign paths, ...).
+    let mkdir = server.call_first_class(
+        "mkdir",
+        json!({"path": "todos", "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        mkdir["result"]["isError"].as_bool(),
+        Some(false),
+        "mkdir todos should succeed; got: {mkdir}"
+    );
+
+    let shown = server.call_first_class(
+        "show",
+        json!({"id": "todos", "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        shown["result"]["isError"].as_bool(),
+        Some(true),
+        "show on a folder must be rejected; got: {shown}"
+    );
+    let text = RealNbServer::error_text(&shown);
+    assert!(
+        text.contains("non-textual") && text.contains("folder"),
+        "show must return the typed folder diagnostic, not nb CLI output; got: {text:?}"
+    );
+    assert!(
+        !text.contains("No todos found"),
+        "show must not dispatch to todos listing; got: {text:?}"
+    );
+
+    let deleted = server.call_first_class(
+        "delete",
+        json!({"id": "todos", "recursive": true, "notebook": env.notebook()}),
+    );
+    assert_eq!(
+        deleted["result"]["isError"].as_bool(),
+        Some(false),
+        "recursive delete of subcommand-named folder should succeed; got: {deleted}"
+    );
+    assert!(
+        !env.nb_dir().join(env.notebook()).join("todos").exists(),
+        "folder must be gone from disk"
+    );
+    assert_eq!(
+        worktree_status(&env),
+        "",
+        "tree should be clean after folder operations"
+    );
+}
