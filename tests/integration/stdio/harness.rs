@@ -55,6 +55,19 @@ pub(crate) fn shim_env() -> ShimEnv {
     fs::create_dir_all(&root).unwrap();
     fs::create_dir_all(root.join("notebooks").join(TEST_NOTEBOOK)).unwrap();
     fs::create_dir_all(root.join("notebooks").join("other-team")).unwrap();
+    // Native nb-api reads (status since 0.4.5) resolve the notebook
+    // root from NB_DIR and require a real git notebook dir, so the
+    // fakes must be git-initialized like real `nb` notebooks are.
+    for notebook in [TEST_NOTEBOOK, "other-team"] {
+        let dir = root.join("notebooks").join(notebook);
+        let init = std::process::Command::new("git")
+            .arg("init")
+            .arg("--quiet")
+            .arg(&dir)
+            .output()
+            .unwrap();
+        assert!(init.status.success(), "git init failed: {init:?}");
+    }
     let shim_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(SHIM_DIR);
     let inherited_path = std::env::var("PATH").unwrap_or_default();
     let path = format!("{}:{inherited_path}", shim_dir.display());
@@ -76,6 +89,7 @@ pub(crate) fn start_server_with_args(
         .arg("--no-create-notebook")
         .args(extra_args)
         .env("NB_SHIM_ROOT", &shim.root)
+        .env("NB_DIR", shim.root.join("notebooks"))
         .env("PATH", &shim.path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

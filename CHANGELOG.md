@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2026-11-17
+
+### Changed
+
+- Raised the `nb-api` floor to `0.4.5`: `CommandFailed` diagnostics
+  render the process exit as `exit 1` (or `exit unknown`) instead of
+  leaking `Option` debug formatting (`exit Some(1)`). Folder deletes
+  follow the new typed `WrongKind` variant (expected file kinds,
+  observed `Folder`) instead of the removed string-matched plan
+  message; notebook status now resolves natively, with the stdio
+  shim harness creating real git notebook dirs to match.
+
 ## [0.16.0] - 2026-11-10
 
 ### Changed
@@ -163,6 +175,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   operations with explicit notebook routing.
 - Added XDG-compliant logging, ANSI stripping, and prebuilt release binaries.
 
+[0.16.1]: https://github.com/emcd/nb-mcp-server/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/emcd/nb-mcp-server/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/emcd/nb-mcp-server/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/emcd/nb-mcp-server/compare/v0.13.0...v0.14.0

@@ -26,7 +26,7 @@ fn nb_tool_defaults_null_and_empty_args_objects() {
     let mut server = start_server(&shim);
     for args in [Value::Null, json!({})] {
         let response = server.call_nb("nb.status", args);
-        assert!(tool_text(&response).contains("status"));
+        assert!(!is_tool_error(&response), "response: {response}");
     }
 }
 

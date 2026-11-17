@@ -1,3 +1,5 @@
+use std::fs;
+
 use serde_json::json;
 
 use super::harness::*;
@@ -5,10 +7,20 @@ use super::harness::*;
 #[test]
 fn first_class_status_works() {
     let shim = shim_env();
+    // Native status reports porcelain dirt; a clean tree yields empty
+    // output, so plant an untracked file and expect it reported.
+    fs::write(
+        shim.root
+            .join("notebooks")
+            .join(TEST_NOTEBOOK)
+            .join("status-probe.md"),
+        "probe\n",
+    )
+    .unwrap();
     let mut server = start_server(&shim);
     let response = server.call_first_class("status", json!({}));
     assert!(!is_tool_error(&response), "response: {response}");
-    assert!(tool_text(&response).contains("status"));
+    assert!(tool_text(&response).contains("status-probe.md"));
 }
 
 #[test]

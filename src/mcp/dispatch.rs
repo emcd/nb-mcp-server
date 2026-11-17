@@ -3,7 +3,7 @@
 use anyhow::Result;
 use rmcp::{ErrorData as McpError, model::CallToolResult};
 
-use crate::nb::{NbError, NoteTarget};
+use crate::nb::{EntityKind, NbError, NoteTarget};
 
 use super::McpServer;
 use super::envelopes::{
@@ -495,19 +495,14 @@ impl McpServer {
             .nb
             .delete_note(&args.id, args.notebook.as_deref())
             .await;
-        // Upstream routes folder targets to the folder op with a typed
-        // message; the plan layer annotates it with its op index, so match
-        // the inner text rather than the outer variant. Follow it behind
-        // the same tool so `delete` keeps working for both.
-        let is_folder = match &result {
-            Err(NbError::ValidationError { reason, .. }) => {
-                reason.contains("use delete_folder instead of delete_note")
-            },
-            Err(NbError::PlanValidation { message, .. }) => {
-                message.contains("use delete_folder instead of delete_note")
-            },
-            _ => false,
-        };
+        // Upstream reports folder targets with the typed WrongKind
+        // variant (expected file kinds, observed Folder); follow it
+        // behind the same tool so `delete` keeps working for both.
+        let is_folder = matches!(
+            &result,
+            Err(NbError::WrongKind { actual, .. })
+                if *actual == EntityKind::Folder
+        );
         let result = if is_folder {
             self.nb
                 .delete_folder(
