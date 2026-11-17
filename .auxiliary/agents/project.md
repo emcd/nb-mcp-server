@@ -11,6 +11,10 @@ Structured tracking stays in `nb`.
 
 [List your primary technologies]
 
+## Release
+
+Release rule: CI must be green before tagging.
+
 ## Notes
 
 <!-- Accumulate project-specific knowledge, constraints, deviations, and durable
