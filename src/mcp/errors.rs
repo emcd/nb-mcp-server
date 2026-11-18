@@ -3,7 +3,9 @@
 use rmcp::model::{CallToolResult, Content};
 use serde::Serialize;
 
-use crate::nb::{CommitOutcome, Fingerprint, NbError, ShowNote};
+use crate::nb::{
+    CommitOutcome, EntityKind, Fingerprint, KindSet, NbError, ShowNote,
+};
 
 use super::envelopes::ShowEnvelope;
 
@@ -326,6 +328,39 @@ pub(crate) fn present_nb_error(err: &NbError) -> String {
              Hint: a fingerprint is `b3:` followed by 64 lowercase hex digits, \
              obtained from `show`."
         ),
+        NbError::WrongKind {
+            expected,
+            actual,
+            selector,
+            path,
+        } => {
+            let found = match actual {
+                EntityKind::Folder => "a folder",
+                EntityKind::Note => "a note",
+                EntityKind::Todo => "a todo",
+                EntityKind::Bookmark => "a bookmark",
+                _ => "an item of another type",
+            };
+            let wanted = match expected {
+                KindSet::File => "a note, todo, or bookmark",
+                KindSet::Document => "a text note, todo, or bookmark",
+                KindSet::Todo => "a todo",
+                KindSet::Folder => "a folder",
+            };
+            let hint = match actual {
+                EntityKind::Folder => {
+                    "for folders use `folders` or `list`; folder deletes \
+                     accept `recursive: true`"
+                },
+                _ => "pick an item of the expected kind and retry",
+            };
+            format!(
+                "Invalid args for this operation.\n\
+                 Reason: `{selector}` (`{path}`) is {found}, but the operation \
+                 needs {wanted}.\n\
+                 Hint: {hint}."
+            )
+        },
         other => other.to_string(),
     }
 }

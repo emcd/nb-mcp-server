@@ -742,3 +742,41 @@ fn subcommand_named_folder_resolves_cleanly() {
         "tree should be clean after folder operations"
     );
 }
+
+#[test]
+fn wrong_kind_surfaces_translated_diagnostic() {
+    let env = fresh_env();
+    let mut server = RealNbServer::spawn(&env);
+    // `do` on a plain note raises upstream WrongKind (needs Todo,
+    // observed Note); the MCP layer must translate it instead of
+    // leaking the raw kind vocabulary.
+    let added = add_note_via_mcp(&mut server, &env, "Plain Note", "Body.\n");
+    let outcome = RealNbServer::result_json(&added);
+    let path = outcome["ops"][0]["path"].as_str().unwrap().to_string();
+
+    let done = server.call_first_class(
+        "do",
+        json!({
+            "id": format!("{}:{path}", env.notebook()),
+            "notebook": env.notebook(),
+        }),
+    );
+    assert_eq!(
+        done["result"]["isError"].as_bool(),
+        Some(true),
+        "do on a note should fail; got: {done}"
+    );
+    let text = RealNbServer::error_text(&done);
+    assert!(
+        text.contains("Invalid args for this operation"),
+        "should carry the translated diagnostic; got: {text:?}"
+    );
+    assert!(
+        text.contains("is a note") && text.contains("needs a todo"),
+        "should name observed and expected kinds in plain words; got: {text:?}"
+    );
+    assert!(
+        !text.contains("wrong kind for"),
+        "must not leak the raw kind vocabulary; got: {text:?}"
+    );
+}

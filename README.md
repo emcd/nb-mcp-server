@@ -239,53 +239,46 @@ Invoking multiplexed `nb.edit` is rejected with recovery guidance naming
 the replacement tools. The body-aware and line tools are direct-only:
 invoking them through the multiplexed `nb` tool is rejected.
 
-## Structured Results
+## Results
 
-- `show` returns a text-first slim structured envelope: `selector`, `path`,
-   `kind`, `todo_state`, `title` (normalized `Option<String>`), `tags`, `body`
-   (full UTF-8 text), `body_contiguous`, `fingerprint`, and `numeric_id`.
-   No base64 field is exposed. When the source is not valid UTF-8, `show`
-   returns a typed `NonUtf8` error carrying the MIME hint plus guidance to
-   an external raw-retrieval facility outside MCP (the `nb` CLI); a
-   non-textual target returns `UnsupportedShowTarget`. Neither ever
-   returns base64 bytes.
-- Mutating tools (`add`, `todo`, `bookmark`, `mkdir`, `delete`, `move`,
-  `do`, `undo`, and the body-aware tools) return a structured
-  `CommitOutcome`: `commit_created`, `revision_id`, `pre_revision`, and
-  per-operation `path`/`selector`/`numeric_id`/`noop`/`fingerprint`. Idempotent no-op
-  mutations report `commit_created: false`.
+`show` returns a structured envelope: `selector`, `path`, `kind`
+(`note`, `todo`, `bookmark`), `todo_state`, `title`, `tags`, `body`
+(full UTF-8 text), `body_contiguous`, `fingerprint`, and `numeric_id`.
+No base64 field is exposed: sources that are not valid UTF-8 fail
+with guidance to retrieve raw bytes outside MCP (the `nb` CLI)
+instead of returning bytes. Reads that cannot be served (for
+example `show` on a folder) fail with guidance naming the right
+tool (`folders`/`list`); the server never silently re-routes `show`
+to another command.
 
-## Typed Error Surfaces
+Mutating tools (`add`, `todo`, `bookmark`, `mkdir`, `delete`, `move`,
+`do`, `undo`, and the body-aware tools) return a commit outcome:
+whether a commit was created, the before/after revision markers, and
+per-operation `path`/`selector`/`numeric_id`. Idempotent no-op
+mutations report that no commit was created. The `fingerprint` in a
+`show` result is opaque: pass it back to the body-aware tools so a
+stale edit is rejected instead of overwriting changes made since the
+read.
 
-`nb-api 0.4` introduces typed failures that the MCP layer translates into
-actionable diagnostics on both the multiplexed `nb.*` surface and the
-first-class tool surface. `NonUtf8` and `IndexLockTimeout` (busy `.index`
-lock; retry later, nothing mutated) join the existing set:
+## Errors
 
-- `show` on a non-text selector (folder, archive, image, ...): the
-  error names the selector and the actual non-text type, states
-  that `show` reads text notes only, and points the caller at
-  `folders`/`list`. The server never silently re-routes `show` to
-  another command.
-- `add` with both a `title` and a `content` whose first nonblank
-  line is an H1 that duplicates the title: the error names the
-  title and the detected heading and tells the caller to remove
-  the duplicate H1 or omit the separate `title`.
-- Stale-editing guards: `FingerprintMismatch`, `AnchorMismatch`, and
-  `OccurrenceMismatch` tell the caller to re-read the note and retry
-  with fresh fingerprint/anchors/counts.
-- `FragmentedBody`: a multi-fragment body (for example a bookmark with
-  multiple body fragments) refuses line/substring/body-replace
-  operations; metadata operations (`retitle_note`, `edit_note_tags`)
-  still apply.
-- `DirtyBaseline`: a mutation refuses when the notebook worktree/index
-  is dirty; the diagnostic tells the caller to commit or clean it first.
-- `IndeterminateCommit` / `RecoveryRequired`: commit completion is unknown
-  or recovery is needed; the diagnostic instructs the caller not to
-  auto-retry and to inspect HEAD/status before acting.
-- `GateTimeout`: the notebook is busy; retry later.
-- `PathCollision` / `PathIgnored` / `UnsupportedStructure` /
-  `PlanValidation`: surface the specific path/plan guidance.
+Failures are plain-language diagnostics with a recovery hint, on both
+the multiplexed `nb.*` surface and the first-class tool surface. No
+internal type or variant names appear in tool responses. Common cases:
+
+- Reading something that is not a text note (folder, archive, image):
+  the error names the item and points at `folders`/`list`.
+- Wrong item kind for the operation (for example marking a plain
+  note done): the error names the item, what it is, and what the
+  operation needs.
+- `add` content shaped like a todo, or a title duplicating the
+  content's own H1: the error names the conflict and the fix (use the
+  `todo` tool; drop the duplicate).
+- Stale fingerprints, anchors, or match counts: re-read and retry
+  with fresh values; the diagnostic says which.
+- Dirty notebook worktree/index, busy notebook (retry later), and
+  path problems: each names the cause and the next step (commit or
+  clean the tree first; wait and retry; pick a different path).
 
 ## Configuration
 

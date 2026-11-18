@@ -7,7 +7,7 @@
 
 pub use nb_api::{
     BodyFragment, BoundaryAt, CommitOutcome, DocumentKind, EntityKind,
-    Fingerprint, LineAnchor, LineEdit, LineEol, LinePosition, LineRef,
-    NbClient, NbError, NoteTarget, Occurrence, SearchMode, SearchNoteLines,
-    ShowNote, ShowNoteLines, TaskStatus, TodoState,
+    Fingerprint, KindSet, LineAnchor, LineEdit, LineEol, LinePosition,
+    LineRef, NbClient, NbError, NoteTarget, Occurrence, SearchMode,
+    SearchNoteLines, ShowNote, ShowNoteLines, TaskStatus, TodoState,
 };
