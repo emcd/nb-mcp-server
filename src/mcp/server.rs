@@ -134,7 +134,7 @@ impl McpServer {
 
     #[tool(
         name = "edit_note_substring",
-        description = "Edit a note body by replacing one or more occurrences of a byte pattern. `expected_count` must match the actual match count; an optional fingerprint guards against stale edits. Direct-only tool; no multiplexed alias."
+        description = r#"Edit a note body by replacing one or more occurrences of a byte pattern. `occurrence` is {"type": "first"}, {"type": "all"}, or {"type": "nth", "n": N}; `expected_count` must match the actual match count; an optional fingerprint guards against stale edits. Direct-only tool; no multiplexed alias."#
     )]
     async fn nb_edit_note_substring(
         &self,
@@ -145,7 +145,7 @@ impl McpServer {
 
     #[tool(
         name = "edit_note_lines",
-        description = "Apply a batch of disjoint line edits (insert/delete/replace) to a note body, verified against anchors from one original snapshot. Direct-only tool; no multiplexed alias."
+        description = r#"Apply a batch of disjoint line edits (insert/delete/replace) to a note body, verified against anchors from one original snapshot. Line references are {"number", "anchor"} pairs copied verbatim from `show_note_lines` output — never construct anchors by hand. Direct-only tool; no multiplexed alias."#
     )]
     async fn nb_edit_note_lines(
         &self,
