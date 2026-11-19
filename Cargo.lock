@@ -697,7 +697,7 @@ dependencies = [
 
 [[package]]
 name = "nb-mcp-server"
-version = "0.16.1"
+version = "0.16.2"
 dependencies = [
  "anyhow",
  "nb-api",
