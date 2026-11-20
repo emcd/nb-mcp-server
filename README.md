@@ -297,6 +297,20 @@ server does not fall back to `nb`'s default notebook.
 If the resolved notebook does not exist, the server creates it automatically.
 Use `--no-create-notebook` to disable automatic creation.
 
+### Store Location
+
+Notebook storage lives under `NB_DIR` when set (explicit configuration
+always wins). When `NB_DIR` is unset, the server follows the `nb`
+convention: `~/.nbrc` (`$NBRC_PATH`) when it names a store, else
+`~/.nb`. A warning is logged only when the rc file is present but
+ambiguous; a missing rc file falls back silently.
+
+Note: this precedence is bug-compatible with `nb-api` 0.4.6 and
+differs from `nb` itself, which always evaluates `~/.nbrc` — a plain
+`NB_DIR` assignment there overrides an inherited `NB_DIR`. The next
+release will match `nb`: the rc file will always be evaluated,
+regardless of whether `NB_DIR` is set.
+
 ### Logging
 
 Logs are written to `~/.local/state/nb-mcp/{project}--{worktree}.log` (XDG-compliant).

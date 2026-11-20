@@ -134,7 +134,7 @@ impl McpServer {
 
     #[tool(
         name = "edit_note_substring",
-        description = r#"Edit a note body by replacing one or more occurrences of a byte pattern. `occurrence` is {"type": "first"}, {"type": "all"}, or {"type": "nth", "n": N}; `expected_count` must match the actual match count; an optional fingerprint guards against stale edits. Direct-only tool; no multiplexed alias."#
+        description = r#"Edit a note body by replacing one or more occurrences of a byte pattern. `occurrence` is {"type": "first"}, {"type": "all"}, or {"type": "nth", "n": N} with one-based N; `expected_count` must match the actual match count; an optional fingerprint guards against stale edits. Known quirk: an out-of-range N currently succeeds as a no-op instead of erroring (upstream defect, fix pending) — verify the body changed when N may exceed the match count. Direct-only tool; no multiplexed alias."#
     )]
     async fn nb_edit_note_substring(
         &self,
@@ -145,7 +145,7 @@ impl McpServer {
 
     #[tool(
         name = "edit_note_lines",
-        description = r#"Apply a batch of disjoint line edits (insert/delete/replace) to a note body, verified against anchors from one original snapshot. Line references are {"number", "anchor"} pairs copied verbatim from `show_note_lines` output — never construct anchors by hand. Direct-only tool; no multiplexed alias."#
+        description = r#"Apply a batch of disjoint line edits (insert/delete/replace) to a note body, verified against anchors from one original snapshot. Line references are {"number", "anchor"} pairs copied verbatim from `show_note_lines` output — e.g. {"number": 3, "anchor": "b3l1:…"} — never construct anchors by hand. Direct-only tool; no multiplexed alias."#
     )]
     async fn nb_edit_note_lines(
         &self,
