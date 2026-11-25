@@ -1,6 +1,6 @@
 //! Recovery-oriented error translation plus shared result and guard helpers.
 
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::{CallToolResult, ContentBlock};
 use serde::Serialize;
 
 use crate::nb::{
@@ -14,7 +14,7 @@ pub(crate) fn parse_fingerprint(value: &str) -> Result<Fingerprint, NbError> {
 }
 
 pub(crate) fn tool_error(message: impl Into<String>) -> CallToolResult {
-    CallToolResult::error(vec![Content::text(message.into())])
+    CallToolResult::error(vec![ContentBlock::text(message.into())])
 }
 
 /// A fenced code block opener: marker character plus run length, per
@@ -119,10 +119,12 @@ pub(crate) fn todo_shaped_add_rejection() -> CallToolResult {
 /// Present a `Result<String, NbError>` (reads) as a text tool result.
 pub(crate) fn text_result(result: Result<String, NbError>) -> CallToolResult {
     match result {
-        Ok(output) => CallToolResult::success(vec![Content::text(output)]),
-        Err(err) => {
-            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+        Ok(output) => {
+            CallToolResult::success(vec![ContentBlock::text(output)])
         },
+        Err(err) => CallToolResult::error(vec![ContentBlock::text(
+            present_nb_error(&err),
+        )]),
     }
 }
 
@@ -132,9 +134,9 @@ pub(crate) fn outcome_result(
 ) -> CallToolResult {
     match result {
         Ok(outcome) => json_success(&outcome),
-        Err(err) => {
-            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
-        },
+        Err(err) => CallToolResult::error(vec![ContentBlock::text(
+            present_nb_error(&err),
+        )]),
     }
 }
 
@@ -144,9 +146,9 @@ pub(crate) fn show_result(
 ) -> CallToolResult {
     match result {
         Ok(shown) => json_success(&ShowEnvelope::from_show(shown)),
-        Err(err) => {
-            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
-        },
+        Err(err) => CallToolResult::error(vec![ContentBlock::text(
+            present_nb_error(&err),
+        )]),
     }
 }
 
@@ -155,25 +157,25 @@ pub(crate) fn show_result(
 fn typed_result<T: Serialize>(result: Result<T, NbError>) -> CallToolResult {
     match result {
         Ok(value) => json_success(&value),
-        Err(err) => {
-            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
-        },
+        Err(err) => CallToolResult::error(vec![ContentBlock::text(
+            present_nb_error(&err),
+        )]),
     }
 }
 
 /// Present an `Err(NbError)` as a structured error result.
 pub(crate) fn nb_error_result(err: NbError) -> CallToolResult {
-    CallToolResult::error(vec![Content::text(present_nb_error(&err))])
+    CallToolResult::error(vec![ContentBlock::text(present_nb_error(&err))])
 }
 
 pub(crate) fn json_success(value: &impl Serialize) -> CallToolResult {
     match serde_json::to_value(value) {
-        Ok(json) => {
-            CallToolResult::success(vec![Content::json(json).unwrap_or_else(
-                |_| Content::text("failed to serialize result".to_string()),
-            )])
-        },
-        Err(_) => CallToolResult::success(vec![Content::text(
+        Ok(json) => CallToolResult::success(vec![
+            ContentBlock::json(json).unwrap_or_else(|_| {
+                ContentBlock::text("failed to serialize result".to_string())
+            }),
+        ]),
+        Err(_) => CallToolResult::success(vec![ContentBlock::text(
             "failed to serialize result".to_string(),
         )]),
     }

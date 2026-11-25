@@ -3,7 +3,7 @@
 use anyhow::Result;
 use rmcp::{
     ErrorData as McpError,
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
 };
 
 use super::schemas::*;
@@ -295,7 +295,7 @@ pub(crate) fn help_tool(
         },
     };
 
-    Ok(CallToolResult::success(vec![Content::json(response)?]))
+    Ok(CallToolResult::success(vec![ContentBlock::json(response)?]))
 }
 
 fn command_help(

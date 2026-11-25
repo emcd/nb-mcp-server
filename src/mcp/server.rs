@@ -4,7 +4,7 @@ use anyhow::Result;
 use rmcp::{
     ErrorData as McpError, ServiceExt,
     handler::server::wrapper::Parameters,
-    model::{CallToolResult, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, ServerCapabilities, ServerConfig},
     tool, tool_handler, tool_router,
     transport::stdio,
 };
@@ -297,8 +297,8 @@ impl McpServer {
 
 #[tool_handler]
 impl rmcp::ServerHandler for McpServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "MCP server wrapping nb CLI for LLM-friendly note-taking. \
              Handles markdown escaping and notebook qualification automatically.",
         )

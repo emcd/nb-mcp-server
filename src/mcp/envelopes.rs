@@ -1,6 +1,6 @@
 //! Text-first result envelopes (native `String` wire, dual-path title mapping).
 
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::{CallToolResult, ContentBlock};
 use serde::Serialize;
 
 use crate::nb::{
@@ -137,9 +137,9 @@ pub(crate) fn show_note_lines_result(
         Ok(envelope) => {
             json_success(&ShowNoteLinesEnvelope::from_wire(envelope))
         },
-        Err(err) => {
-            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
-        },
+        Err(err) => CallToolResult::error(vec![ContentBlock::text(
+            present_nb_error(&err),
+        )]),
     }
 }
 
@@ -149,13 +149,13 @@ pub(crate) fn search_note_lines_result(
     match result {
         Ok(shown) => match SearchNoteLinesEnvelope::from_wire(shown) {
             Ok(envelope) => json_success(&envelope),
-            Err(err) => CallToolResult::error(vec![Content::text(
+            Err(err) => CallToolResult::error(vec![ContentBlock::text(
                 present_nb_error(&err),
             )]),
         },
-        Err(err) => {
-            CallToolResult::error(vec![Content::text(present_nb_error(&err))])
-        },
+        Err(err) => CallToolResult::error(vec![ContentBlock::text(
+            present_nb_error(&err),
+        )]),
     }
 }
 

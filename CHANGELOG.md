@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.3] - 2026-11-25
+
+### Changed
+
+- Raised the `rmcp` floor to `3.11.0`: the server answers the
+  `server/discover` probe (SEP-2575 stateless discovery) instead of
+  terminating on a non-`initialize` first message, while
+  `initialize`-first clients keep working unchanged; unknown tool
+  arguments now surface as a tool error result instead of a
+  JSON-RPC error.
+
 ## [0.16.2] - 2026-11-19
 
 ### Changed
@@ -185,6 +196,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   operations with explicit notebook routing.
 - Added XDG-compliant logging, ANSI stripping, and prebuilt release binaries.
 
+[0.16.3]: https://github.com/emcd/nb-mcp-server/compare/v0.16.2...v0.16.3
 [0.16.2]: https://github.com/emcd/nb-mcp-server/compare/v0.16.1...v0.16.2
 [0.16.1]: https://github.com/emcd/nb-mcp-server/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/emcd/nb-mcp-server/compare/v0.15.0...v0.16.0

@@ -66,9 +66,10 @@ fn first_class_search_rejects_unknown_args() {
         "search",
         json!({"queries": ["test"], "unknown_field": "value"}),
     );
-    // MCP framework returns a JSON-RPC error for deserialization failures.
-    assert!(response.get("error").is_some(), "response: {response}");
-    let error_msg = response["error"]["message"].as_str().unwrap();
+    // rmcp 3.x surfaces parameter deserialization failures as a tool
+    // error result (rmcp 1.x returned a JSON-RPC error instead).
+    assert!(is_tool_error(&response), "response: {response}");
+    let error_msg = tool_text(&response);
     assert!(
         error_msg.contains("unknown field")
             || error_msg.contains("failed to deserialize"),
